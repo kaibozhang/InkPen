@@ -1,0 +1,16 @@
+/nologo
+/target:winexe
+/out:D:\Writer\InkPen\dist\InkPen.exe
+/optimize+
+/platform:anycpu
+/langversion:5
+/warn:2
+/r:System.dll
+/r:System.Core.dll
+/r:System.Drawing.dll
+/r:System.Windows.Forms.dll
+/r:System.Data.dll
+/r:System.Management.dll
+/r:System.IO.Compression.dll
+/r:System.IO.Compression.FileSystem.dll
+/recurse:D:\Writer\InkPen\src\App\*.cs

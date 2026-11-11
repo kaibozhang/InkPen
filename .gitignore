@@ -1,0 +1,40 @@
+# ---------------------------------------------------------------
+# InkPen .gitignore
+# 原则：仓库只放「能重新生成的东西的源头」，不放能重新生成的产物。
+# ---------------------------------------------------------------
+
+# ---- 构建产物 ----
+/dist/
+[Bb]in/
+[Oo]bj/
+*.exe
+*.pdb
+*.dll
+*.cache
+*.user
+*.suo
+*.trx
+TestResults/
+
+# ---- 上游源码快照（体积大，按需下载，不入库）----
+# 这两个是 build_glyph_db.py 的原料，解压后 155 MB
+tools/_src/
+tools/*.tar.gz
+
+# ---- 专有字库：仅本机使用，不随任何形式分发 ----
+# 见 NOTICE.md §4：local.zip 来自本机奎享雕刻的 .gfont，授权不允许再分发。
+# 缺这个包时程序正常启动（回退到 mmah/fallback），
+# GlyphOrientationTests 会自动跳过与它相关的用例。
+data/glyphs/local.zip
+data/glyphs/local_report.json
+data/glyphs/local/
+
+# ---- 本地临时/调试 ----
+*.log
+*.tmp
+*.bak
+Thumbs.db
+.DS_Store
+
+# ---- 自检生成的 GCode 样例可由 build/selftest.bat 重新生成 ----
+# （这些在 dist/ 下，已被上面的 /dist/ 规则覆盖，这里只作显式说明）

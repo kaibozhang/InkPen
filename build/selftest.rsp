@@ -1,0 +1,17 @@
+/nologo
+/target:exe
+/out:D:\Writer\InkPen\dist\InkPen.SelfTest.exe
+/optimize+
+/platform:anycpu
+/langversion:5
+/warn:2
+/r:System.dll
+/r:System.Core.dll
+/r:System.IO.Compression.dll
+/r:System.IO.Compression.FileSystem.dll
+D:\Writer\InkPen\src\App\Core\Model\Model.cs
+D:\Writer\InkPen\src\App\Core\SimpleJson.cs
+D:\Writer\InkPen\src\App\Core\Glyph\GlyphRepository.cs
+D:\Writer\InkPen\src\App\Core\Layout\LayoutEngine.cs
+D:\Writer\InkPen\src\App\Core\GCode\GCodeBuilder.cs
+D:\Writer\InkPen\tools\selftest\SelfTest.cs

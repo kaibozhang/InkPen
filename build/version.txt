@@ -1,0 +1,10 @@
+InkPen 0.1.1-M1
+Build: 2026-11-11
+Target: .NET Framework 4.8 / WinForms / C# 5
+Toolchain: csc.exe (in-box) + MSBuild 17.14 (VS 2022 Build Tools)
+Upstream: GRBL-Plotter 1.8.1.2 (GPL-3.0-or-later), algorithm extraction only
+M1 status: offline pipeline, simulation, self-test, file-level GCode validation,
+           unit tests (95/95) and GUI functional checks all PASS
+Fixed in 0.1.1: local.zip glyph pack was vertically mirrored (Y not flipped when
+           importing .gfont), which rendered every character rotated 180 degrees
+Real-machine calibration (Z travel / axis direction / COM port) still pending

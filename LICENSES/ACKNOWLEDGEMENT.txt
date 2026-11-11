@@ -1,0 +1,173 @@
+HERSHEY FONT DATA — ACKNOWLEDGEMENT
+====================================
+
+InkPen 的拉丁字母 / 数字 / ASCII 标点单线字形数据，来自 GRBL-Plotter
+(https://github.com/svenhb/GRBL-Plotter) 源文件
+  GCodeCreation/CreateFromForm/GCodeFromFontHershey.cs
+内嵌的 Hershey 字形表（Futural / Scripts）。
+
+数据出处链：
+  1. 原始 Hershey 字形：Dr. A. V. Hershey, U.S. National Bureau of Standards
+     (NIST)；授权性质为**自带 USE RESTRICTION 的宽松许可**（自由使用 + 致谢，
+     亦常被描述为公有领域），详见下文「许可性质与 SIL OFL 1.1 适用范围」。
+  2. 数字化字形数据格式：James Hurt, Cognition, Inc.
+  3. SVG 化 / 重制：Evil Mad Scientist Laboratories 的 Inkscape 扩展
+     "Hershey Text" (https://www.evilmadscientist.com/2011/hershey-text-an-inkscape-extension-for-engraving-fonts/)，
+     源自 https://gitlab.com/oskay/svg-fonts 。该扩展在 2016 年由 Sheldon B. Michaels
+     扩充，新增源自现代字体的雕刻字体（"EMS" 系列，EMS*.svg）；**仅这些 EMS 现代
+     衍生字体**受 SIL Open Font License 1.1 覆盖，经典 NIST / Hershey 字形表不受
+     OFL 约束（详见下文「许可性质与 SIL OFL 1.1 适用范围」）。
+  4. 经 GRBL-Plotter 收录为该 C# 字符串表（其项目整体为 GPL-3.0-or-later，
+     见 GPL-3.0.txt）。GRBL-Plotter 的 data/fonts/README.md 只是做法与来源说明，
+     并不构成一份新的许可证。据上游交叉核对，该 README 与 data/fonts/lff/、
+     data/fonts/svg/ 并未全部携带经典 Hershey 数据的「USE RESTRICTION」逐字全文；
+     本地快照中的 data__fonts__README.md 亦仅列来源、无该全文——逐字全文实际位于
+     本快照 GCodeCreation__CreateFromForm__GCodeFromFontHershey.cs 文件头
+     （第 34–60 行），并在下文按原文转录。
+
+=== 致谢覆盖对象（含源码内嵌数组）===
+
+本致谢文件覆盖以下两份同源、均受同一 USE RESTRICTION 约束的 Hershey 字形数据：
+  (1) 随发行版提供的 `latin*.zip` 衍生字形数据（InkPen Glyph v1）——由离线工具
+      `tools/build_glyph_db.py` 读取上游 C# 内嵌表转换而来，是 exe 运行时实际
+      加载的数据；`data/glyphs/schema.json` 将其许可记为
+      "free use + acknowledgement"。
+  (2) 只读源码快照 `src/Upstream/GRBL-Plotter/` 中
+      `GCodeCreation__CreateFromForm__GCodeFromFontHershey.cs` 内嵌的
+      `public static readonly string[]` Hershey 字形表（Astrology / Cursive /
+      Cyrillic / Futural / Futuram / Greek / Japanese 等，
+      "-12 12 M -8 -10 L -4 -8 ..." 的 M 抬笔 / L 落笔格式）——在上游
+      GRBL-Plotter 中，这是继 `data/fonts/svg/Hershey*.svg`（11 个）与
+      `data/fonts/lff/` 里 Hershey 衍生 lff 之外的**第三份 Hershey 数据副本**
+      （上游将其编译进自身程序集）；在 InkPen 中它仅存在于只读源码快照，随完整
+      源码提供时一并分发，故同样须随附本致谢。
+架构事实：主程序 `src/App/*.cs` **不内嵌**任何 Hershey 字形数组，exe 运行时只
+加载自有 `latin*.zip`；上述 (2) 仅存在于只读上游源码快照。即 plan-arch 提出的
+「不复制 string[]、只提取 M/L 解析算法」在**主程序层面已实现**，但源码快照层面
+仍保留一份内嵌数组副本，须如实标注。
+
+=== 经典 Hershey 数据「USE RESTRICTION」逐字原文（verbatim）===
+
+来源（本地一手）：src/Upstream/GRBL-Plotter/
+GCodeCreation__CreateFromForm__GCodeFromFontHershey.cs 文件头第 34–60 行
+（逐字，已用 diff 校验与该文件完全一致）。该段为 GRBL-Plotter 随源码附带的
+Hershey Fonts USE RESTRICTION。InkPen 随附本致谢文件，即满足其「分发须随附
+致谢」的条件。
+
+本段**只取 USE RESTRICTION 段 + 两条致谢**，未整篇照搬 Ghostscript / Usenet
+分发说明：`https://raw.githubusercontent.com/LibreCAD/LibreCAD/master/librecad/support/fonts/hershey.readme`
+全文另含大量字形编号 / 文件格式描述、NTIS 说明性段落与
+"Public Domain. Distributed with Ghostscript 6.50, November 2000" 尾注，
+均**不属**本致谢所需，故不引入。等效干净来源：Debian
+`https://sources.debian.org/src/hershey-fonts/0.1-1.1/hershey-fonts/hershey.txt/`
+与 Fedora `https://getfedora.org/wiki/Licensing:HersheyFontLicense`——二者所载
+USE RESTRICTION 段与本段对应部分逐字一致（均已实际 fetch 核对）。
+
+-------------------------------------------------------------------
+The Hershey Fonts are a set of vector fonts with a liberal license. 
+
+USE RESTRICTION:
+	This distribution of the Hershey Fonts may be used by anyone for
+	any purpose, commercial or otherwise, providing that:
+		1. The following acknowledgements must be distributed with
+			the font data:
+			- The Hershey Fonts were originally created by Dr.
+				A. V. Hershey while working at the U. S.
+				National Bureau of Standards.
+			- The format of the Font data in this distribution
+				was originally created by
+					James Hurt
+					Cognition, Inc.
+					900 Technology Park Drive
+					Billerica, MA 01821
+					(mit-eddie!ci-dandelion!hurt)
+		2. The font data in this distribution may be converted into
+			any other format *EXCEPT* the format distributed by
+			the U.S. NTIS (which organization holds the rights
+			to the distribution and use of the font data in that
+			particular format). Not that anybody would really
+			*want* to use their format... each point is described
+			in eight bytes as "xxx yyy:", where xxx and yyy are
+			the coordinate values as ASCII numbers.
+-------------------------------------------------------------------
+
+条件要点（意译 / paraphrase，非逐字）：
+  - 经典 NIST / Hershey 字形数据为**自带 USE RESTRICTION 的宽松许可**
+    （自由使用 / free use + acknowledgement；Fedora 归类为
+    `Licensing:HersheyFontLicense`，版权标注 `Copyright: 1967 Dr. A. V. Hershey,
+    James Hurt`；亦被广泛描述为「公有领域，带若干 caveats」，见 Debian
+    `hershey.txt` 与 EMS 页面）——**既非 SIL OFL，也非 GPL**；复制或分发须随附
+    致谢，署名 Dr. A. V. Hershey 与 U.S. National Bureau of Standards，以及
+    数字化格式作者 James Hurt / Cognition, Inc.；
+  - 数据可转换为任何其他格式，**唯独不得**以 U.S. NTIS 原始格式再分发（NTIS
+    持有该特定格式的发行与使用权）；
+  - 这两条是「致谢 + 格式限制」条件，**既不是 SIL OFL，也不是 GPL**。
+
+=== 许可性质与 SIL OFL 1.1 适用范围（勘误）===
+
+**经典 Hershey 字形数据 = 自带 USE RESTRICTION 的宽松许可**（自由使用 /
+free use + acknowledgement；Fedora `Licensing:HersheyFontLicense` 口径，
+版权 `Copyright: 1967 Dr. A. V. Hershey, James Hurt`；亦常按「公有领域
+（带 caveats）」描述，见 Debian `hershey.txt` 与 EMS "Hershey Text" 页面逐字
+"They are now generally considered to be in the public domain."）。条件仅为
+「随数据分发两段致谢 + 禁转 US NTIS 格式」。无论按哪种口径，它
+**既不是 SIL OFL，也不是 GPL**。`schema.json` 中 latin 的许可记作
+"free use + acknowledgement"，与此一致。
+
+SIL Open Font License 1.1 **只**适用于上文出处链第 3 项所述、2016 年由
+Sheldon B. Michaels 新增的现代来源雕刻字体（"EMS" 系列，EMS*.svg；据上游
+交叉核对为 29 个）。依据为本地 C# 文件头第 27–31 行：该处说明 2016 年扩充
+加入源自现代字体的新雕刻字体（"EMS" 系列），并逐字写明 "The new engraving fonts are all based on fonts which are licensed under the SIL Open Font License."。这些 EMS 衍生字体**并非** InkPen 使用的经典 Hershey 表，
+且 InkPen **不分发**任何 EMS*.svg / OFL 字体文件。
+
+OFL-1.1.txt 仍保留在 LICENSES/ 中，仅用于记录上述衍生链与出处，并不表示
+InkPen 随附的 latin*.zip 数据受 OFL 覆盖。
+
+=== 字体数据与代码许可分离 ===
+
+InkPen 的修改（2026-11-10）：
+  - 只提取 Futural / Scripts 两张字形表，解析其 "left right M x y L x y ..." 格式；
+    M = 抬笔开始新笔画，L = 落笔连线（与本项目显式笔画边界语义一致）。
+  - 线性缩放到 1024 网格、Y 翻转到 Y-up、按字宽居中，重新编码为
+    InkPen Glyph v1 二进制格式（latin.zip / latin_script.zip）。
+  - 自造中文全角标点与拼音声调笔画，不属于 Hershey 数据。
+
+依据「字体数据与代码许可分离」原则：
+  - 经典 Hershey 字形数据本身不因被内嵌于 GPL 源码而自动变为 GPL 覆盖的衍生代码；
+    数据为自带 USE RESTRICTION 的宽松许可（自由使用 + 致谢 / 禁转 NTIS 格式；
+    非 OFL、非 GPL），与 `schema.json` 的 "free use + acknowledgement" 一致。
+  - 内嵌该表的 GRBL-Plotter C# 源码容器为 GPL-3.0-or-later（见 GPL-3.0.txt），
+    InkPen 主程序作为其衍生随附 GPL-3.0.txt 并遵守 GPL-3.0-or-later。
+  - OFL-1.1 仅及于未随本发行版提供的 29 个 EMS 现代衍生字体；保留 OFL-1.1.txt
+    仅作出处链记录，不作为对 latin*.zip 数据的许可声明。
+  - 本项目保留本致谢文件，以满足经典 Hershey 数据的分发致谢条件。
+
+=== 来源与核对状态（逐字 / 意译边界）===
+  - verbatim（逐字）：经典 Hershey USE RESTRICTION 全文、C# 文件头 EMS/OFL
+    说明句——取自本地 src/Upstream/GRBL-Plotter/
+    GCodeCreation__CreateFromForm__GCodeFromFontHershey.cs；USE RESTRICTION
+    段另与以下已实际 fetch 的权威来源逐字一致：LibreCAD
+    `librecad/support/fonts/hershey.readme`、Debian
+    `hershey-fonts/0.1-1.1/.../hershey.txt`、Fedora
+    `Licensing:HersheyFontLicense`。仅取 USE RESTRICTION 段 + 两条致谢，
+    未引入 Ghostscript / Usenet 说明中的字形编号、文件格式描述与尾注。
+  - 经典 Hershey 公有领域状态另经 Evil Mad Scientist "Hershey Text" 页面
+    (https://www.evilmadscientist.com/2011/hershey-text-an-inkscape-extension-for-engraving-fonts/)
+    逐字确认："They are now generally considered to be in the public domain."
+    Fedora 口径 `Copyright: 1967 Dr. A. V. Hershey, James Hurt` 已由
+    hershey-fonts `COPYING` 等价措辞佐证（Fedora wiki 页本身仅含 USE
+    RESTRICTION 段，未直接显示该行）。
+  - 「29 个 EMS*.svg」数量为上游交叉核对结果；本地源码快照不含
+    data/fonts/svg/ 目录，数量与逐文件清单**未在本地逐一复核（待核）**。
+  - `wqy-unicode.lff` = Apache-2.0 or GPL-3+（`Copyright: 2011, WenQuanYi
+    Project Contributors`）与 LibreCAD `.lff` 逐类许可，依据 LibreCAD
+    `licenses/readme.md`（已实际 fetch）、Debian `copyright`、GRBL-Plotter
+    `data/fonts/README.md`（本地）交叉；文件数量未逐一复核（待核）。
+  - 本文件未虚构任何许可原文；逐字与意译边界已在上文显式标注。
+  - **终验建议**：随附许可证原文再复核一次。上述结论为一手交叉核对，但
+    explore-font 未独立复验；若对外分发时需将本 USE RESTRICTION 与 NTIS
+    原始发行版致谢措辞做逐字一致性比对，建议**待法务复核**
+    （verbatim wording to be confirmed）。本文件已按随附原文满足致谢条件。
+
+第三方组件许可全文（随发行版提供）：GPL-3.0.txt / ARPHICPL*.TXT /
+MIT-chinese-hershey-font.txt；OFL-1.1.txt 仅作衍生链出处记录（不覆盖随附数据）。

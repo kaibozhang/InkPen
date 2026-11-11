@@ -1,0 +1,45 @@
+{
+  "format": "InkPen Glyph v1",
+  "grid": 1024,
+  "origin": "bottom-left, Y up",
+  "container": "ZIP; entry name = decimal Unicode codepoint",
+  "entry": "uint16 strokeCount; float32 advance; per stroke: uint16 pointCount, then pointCount * (float32 x, float32 y); little-endian",
+  "semantics": "each stroke is one continuous pen-down polyline; stroke boundary = pen up",
+  "fonts": {
+    "mmah.zip": {
+      "source": "hanzi-writer-data / Make Me A Hanzi",
+      "license": "Arphic Public License",
+      "count": 9574,
+      "role": "primary, correct stroke order"
+    },
+    "fallback.zip": {
+      "source": "chinese-hershey-font STRK-Kaiti",
+      "license": "MIT",
+      "count": 11442,
+      "role": "missing-character fallback, no stroke order"
+    },
+    "latin.zip": {
+      "source": "Hershey Futural (GRBL-Plotter data/fonts)",
+      "license": "free use + acknowledgement",
+      "count": 115,
+      "role": "Latin/digits/ASCII/CJK punctuation"
+    },
+    "latin_script.zip": {
+      "source": "Hershey Scripts",
+      "license": "free use + acknowledgement",
+      "count": 115,
+      "role": "cursive Latin option"
+    },
+    "pinyin.zip": {
+      "source": "self-authored",
+      "license": "own work",
+      "count": 45,
+      "role": "precomposed pinyin tone vowels"
+    },
+    "local.zip": {
+      "source": "local .gfont import + hand-drawn",
+      "license": "private, not distributed",
+      "role": "user handwriting style"
+    }
+  }
+}
