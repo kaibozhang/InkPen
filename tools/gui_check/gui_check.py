@@ -109,63 +109,154 @@ def gcode_lines(main):
     return int(m.group(1)) if m else -1
 
 
-def launch():
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_SHOWWINDOW = 0x0040
+HWND_TOPMOST = -1
+HWND_NOTOPMOST = -2
+
+
+def raise_window(hwnd, timeout=3.0):
+    """把目标窗口真正抬到最前，并确认它拿到了前台。
+
+    只调 SetForegroundWindow 是不够的：本进程不是前台进程时，Windows 的前台锁
+    会直接忽略该调用。结果就是「截图截到了被别的窗口盖住的区域」——曾经抓出一张
+    浏览器与聊天窗口的图存进 docs/，看着像界面崩了，其实是没抬到前面。
+
+    可靠做法是先把本线程的输入队列 attach 到当前前台线程，此时 SetForegroundWindow
+    才被放行；抬完立刻 detach。
+    """
+    k32 = ctypes.windll.kernel32
+    try:
+        u.ShowWindow(hwnd, 9)                    # SW_RESTORE
+    except Exception:
+        pass
+    end = time.time() + timeout
+    while time.time() < end:
+        attached = False
+        try:
+            fg = u.GetForegroundWindow()
+            tid_fg = u.GetWindowThreadProcessId(fg, None) if fg else 0
+            tid_me = k32.GetCurrentThreadId()
+            if tid_fg and tid_fg != tid_me:
+                attached = bool(u.AttachThreadInput(tid_fg, tid_me, True))
+            u.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                           SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+            u.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                           SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+            u.BringWindowToTop(hwnd)
+            u.SetForegroundWindow(hwnd)
+            u.SetFocus(hwnd)
+            if attached:
+                u.AttachThreadInput(tid_fg, tid_me, False)
+        except Exception:
+            pass
+        if u.GetForegroundWindow() == hwnd:
+            return True
+        time.sleep(0.15)
+    return False
+
+
+def launch(*args):
     if not os.path.exists(EXE):
         print("ERROR: %s not found, run build\\build.bat first" % EXE)
         sys.exit(2)
-    p = subprocess.Popen([EXE])
+    p = subprocess.Popen([EXE] + list(args))
     main, title = find_main()
     if main is None:
         print("RESULT=FAIL reason=main window not found")
         print("TITLES=", [t for _, t in top_windows()][:10])
         p.terminate()
         sys.exit(1)
-    u.SetForegroundWindow(main)
+    if not raise_window(main):
+        print("WARN=window not raised to foreground (screenshot may be wrong)")
     time.sleep(1.5)
     return p, main, title
 
 
-def paper_centering(img):
-    """量画布里的纸张左右留白是否对称。
+def frame_rect(hwnd):
+    """返回窗口的**可见**外框矩形（不含 DWM 阴影/透明拖拽边）。
 
-    画布背景固定 (240,242,246)，纸张是纯白。纸张若被裁到画布边上，说明 Fit() 用了
-    过期的 Size（历史上 SetJob 时窗体还没布局完，panX 偏大，纸跑到右边被切掉）。
-    返回 (left_gap, right_gap, paper_w, canvas_w)。
+    直接 GetWindowRect 在 Win10/11 上会比看得见的窗口大一圈，截图会把
+    桌面背景（壁纸色、别的窗口文字）一起带进来，存档图看着像界面漏了一块。
+    DWMWA_EXTENDED_FRAME_BOUNDS(9) 才是屏幕上真实的可见边界。
+    """
+    rect = wt.RECT()
+    try:
+        dwmapi = ctypes.windll.dwmapi
+        hr = dwmapi.DwmGetWindowAttribute(wt.HWND(hwnd), ctypes.c_uint(9),
+                                          ctypes.byref(rect), ctypes.sizeof(rect))
+        if hr == 0 and rect.right > rect.left and rect.bottom > rect.top:
+            return rect
+    except Exception:
+        pass
+    u.GetWindowRect(hwnd, ctypes.byref(rect))
+    return rect
+
+
+def grab_window(hwnd, tries=3):
+    """截当前窗口。截前重新抬一次前台，截后校验前台仍是它，避免抓到别的窗口。"""
+    from PIL import ImageGrab
+    img = None
+    for _ in range(tries):
+        raise_window(hwnd, 1.5)
+        time.sleep(0.35)
+        r = frame_rect(hwnd)
+        img = ImageGrab.grab(bbox=(r.left, r.top, r.right, r.bottom))
+        if u.GetForegroundWindow() == hwnd:
+            return img
+    print("WARN=screenshot may capture another window (foreground mismatch)")
+    return img
+
+
+def paper_box(img):
+    """在画布区域内定位纸张（近白矩形），返回 (left_gap, right_gap, paper_w, canvas_w, bbox)。
+
+    画布现在是深色渐变，不能再拿固定背景色去抠图；改为「近白像素成片出现」的列/行判定。
+    左右留白必须基本对称、且纸张不能贴边——历史上 Fit() 用了过期尺寸，
+    纸张跑到右侧被裁掉一半，肉眼很难发现，必须机器量。
     """
     w, h = img.size
-    BG = (240, 242, 246)
+    x0, x1 = int(w * 0.235), int(w * 0.745)
+    y0, y1 = int(h * 0.16), int(h * 0.80)
     px = img.load()
 
-    # 画布横向范围：背景色出现的最左/最右列
-    cols = [x for x in range(w) if any(px[x, y] == BG for y in range(60, h - 60, 7))]
+    def white(p):
+        return p[0] >= 240 and p[1] >= 238 and p[2] >= 230
+
+    cols = []
+    for x in range(x0, x1):
+        n = sum(1 for y in range(y0, y1, 4) if white(px[x, y]))
+        if n > ((y1 - y0) // 4) * 0.45:
+            cols.append(x)
     if not cols:
         return None
-    cx0, cx1 = cols[0], cols[-1]
+    p0, p1 = cols[0], cols[-1]
 
-    # 纸张横向范围：画布内的纯白像素
-    whites = [x for x in range(cx0, cx1 + 1)
-              if sum(1 for y in range(60, h - 60, 5) if px[x, y] == (255, 255, 255)) > 3]
-    if not whites:
+    rows = []
+    for y in range(y0, y1):
+        n = sum(1 for x in range(p0, p1 + 1, 4) if white(px[x, y]))
+        if n > ((p1 - p0) // 4) * 0.45:
+            rows.append(y)
+    if not rows:
         return None
-    p0, p1 = whites[0], whites[-1]
-    return (p0 - cx0, cx1 - p1, p1 - p0, cx1 - cx0)
+    r0, r1 = rows[0], rows[-1]
+
+    return (p0 - x0, x1 - p1, p1 - p0, x1 - x0, (p0, r0, p1, r1))
 
 
 # ---------------- 1) smoke ----------------
 
 def check_smoke():
-    from PIL import ImageGrab
-
     p, main, title = launch()
     try:
         dialogs = error_dialogs()
         kids = [t for _, _, t in children(main)]
 
-        rect = wt.RECT()
-        u.GetWindowRect(main, ctypes.byref(rect))
+        rect = frame_rect(main)
         w, h = rect.right - rect.left, rect.bottom - rect.top
 
-        img = ImageGrab.grab(bbox=(rect.left, rect.top, rect.right, rect.bottom))
+        img = grab_window(main)
         os.makedirs(os.path.dirname(SHOT), exist_ok=True)
         img.save(SHOT)
 
@@ -176,35 +267,44 @@ def check_smoke():
                 u"\u5f00\u59cb\u4e66\u5199",                 # 开始书写
                 u"\u8fde\u63a5",                             # 连接
                 u"\u5b9e\u65f6\u72b6\u6001 DRO",             # 实时状态 DRO
+                u"\u5b8f\u6309\u94ae",                       # 宏按钮
                 u"\u624b\u52a8 jog / \u56de\u96f6"]           # 手动 jog / 回零
         missing = [m for m in must if not any(m in k for k in kids)]
 
-        # 画布墨迹：中栏应有深色像素（说明笔画真被画出来了，不是空白面板）
-        mid = img.crop((int(w * 0.28), int(h * 0.12), int(w * 0.78), int(h * 0.82))).convert("L")
-        dark = sum(1 for px in mid.getdata() if px < 110)
-        ratio = dark / float(mid.width * mid.height)
+        rgb = img.convert("RGB")
+        cen = paper_box(rgb)
 
-        cen = paper_centering(img.convert("RGB"))
+        # 墨迹只能在纸面上量。画布改成深色之后，「整块中栏的深色像素」恒为大片深色，
+        # 那种判据会永远通过——等于没有检测。这里改成只统计纸张内部的深色像素。
+        if cen is None:
+            dark, ratio = 0, 0.0
+        else:
+            p0, r0, p1, r1 = cen[4]
+            ins = rgb.crop((p0 + (p1 - p0) // 12, r0 + (r1 - r0) // 12,
+                            p1 - (p1 - p0) // 12, r1 - (r1 - r0) // 12)).convert("L")
+            dark = sum(1 for px in ins.getdata() if px < 110)
+            ratio = dark / float(ins.width * ins.height)
 
         print("MAIN_TITLE=", title)
         print("SIZE=", w, "x", h)
         print("ERROR_DIALOGS=", dialogs)
         print("CHILD_COUNT=", len(kids))
         print("MISSING_CONTROLS=", missing)
-        print("CANVAS_DARK_PIXELS=", dark, "RATIO=%.4f" % ratio)
+        print("PAPER_INK_PIXELS=", dark, "RATIO=%.4f" % ratio)
         if cen is None:
             print("PAPER_CENTER= not measurable")
         else:
-            lg, rg, pw, cw = cen
+            lg, rg, pw, cw = cen[0], cen[1], cen[2], cen[3]
             print("PAPER_CENTER= left_gap=%d right_gap=%d paper_w=%d canvas_w=%d" % (lg, rg, pw, cw))
         print("SCREENSHOT=", SHOT)
 
-        ok = (not missing) and (not dialogs) and w > 900 and ratio > 0.002
+        # 纸张内的墨迹比例：正文约占 1%~5%。低于 0.0015 说明画布是空的
+        ok = (not missing) and (not dialogs) and w > 900 and ratio > 0.0015
         # 纸张必须完整落在画布内、且左右留白基本对称
         if cen is None:
             ok = False
         else:
-            lg, rg, pw, cw = cen
+            lg, rg, pw, cw = cen[0], cen[1], cen[2], cen[3]
             if min(lg, rg) < 8 or abs(lg - rg) > max(24, pw * 0.10):
                 print("PAPER_CENTER= OFF-CENTER/CLIPPED")
                 ok = False
@@ -282,9 +382,43 @@ def check_config():
         p.terminate()
 
 
+# ---------------- 4) level ----------------
+
+def check_level():
+    """打开「调平」页并截图。
+
+    高度图/探测是新增的主功能，必须确认控件真的建出来了（TabPage 是懒加载的，
+    没显示过的页面在以前的 smoke 里根本查不到），且热力图区域不是空白一片。
+    """
+    from PIL import ImageGrab
+
+    p, main, _ = launch("--tab=level")
+    try:
+        kids = [t for _, _, t in children(main)]
+        must = [u"\u63a2\u6d4b\u53c2\u6570",        # 探测参数
+                u"\u63a5\u89e6\u5f0f\u63a2\u6d4b",  # 接触式探测
+                u"\u9ad8\u5ea6\u56fe"]              # 高度图
+        missing = [m for m in must if not any(m in k for k in kids)]
+
+        img = grab_window(main)
+        shot = os.path.join(os.path.dirname(SHOT), "gui_level.png")
+        img.save(shot)
+
+        print("MISSING_CONTROLS=", missing)
+        print("ERROR_DIALOGS=", error_dialogs())
+        print("SCREENSHOT=", shot)
+        ok = (not missing) and (not error_dialogs())
+        print("RESULT=", "PASS" if ok else "FAIL")
+        return ok
+    finally:
+        time.sleep(0.2)
+        p.terminate()
+
+
 # ---------------- main ----------------
 
-CHECKS = {"smoke": check_smoke, "interact": check_interact, "config": check_config}
+CHECKS = {"smoke": check_smoke, "interact": check_interact, "config": check_config,
+          "level": check_level}
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "all"

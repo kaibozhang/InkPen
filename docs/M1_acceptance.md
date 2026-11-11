@@ -21,11 +21,12 @@
 | 6 | 分发构建 | `INKPEN_DISTRIBUTE=1 build.bat` | **PASS**，`local.zip` 与 `local_report.json` 被排除 |
 | 7 | 文档同步 | `cmp` 比对 `NOTICE.md` / `README.md` / `LICENSES/ACKNOWLEDGEMENT.txt` 与 `dist/` | **PASS**，三份一致 |
 | 8 | VS 编译链 | `InkPen.sln` + MSBuild 17.14 + vstest 17.14（VS 2022 Build Tools） | **PASS**，编译零错误、`Rebuild` 成功，产物与 csc 链一致 |
-| 9 | 单元测试 | `INKPEN_CI=1 cmd /c build\test.bat` | **PASS**，**98 / 98**，0 失败 0 跳过 |
+| 9 | 单元测试 | `INKPEN_CI=1 cmd /c build\test.bat` | **PASS**，**140 / 140**（M1 初版 98 项，第四轮新增 42 项机器特性测试），0 失败 0 跳过 |
 | 10 | 字库方向 | `GlyphOrientationTests`（垂直重心相关性 + 「三」横长 + 「P」圆环位置） | **PASS**，`local` 与 `mmah` 相关系数 **+0.711**；回归验证时换回倒置版会失败于 **-0.732** |
-| 10 | GUI 冒烟 | Win32 `EnumWindows`/`EnumChildWindows` + `PIL.ImageGrab` 像素统计 | **PASS**，标题正确、1400×880、98 个子窗口、无错误框、画布墨迹比 0.0070、纸张左右留白 98/97 px（居中未裁切） |
-| 11 | GUI 交互 | Win32 `SendMessageW(BM_CLICK)` 点「把格线写入 GCode」+「生成 GCode」 | **PASS**，笔画 130→137、GCode 2902→2920 行 |
-| 12 | GUI 配置 | 点「保存配置」→ 检查落盘 JSON → 点「读取配置」 | **PASS**，无 BOM、含 `machine/template/text` 三键、读取无对话框 |
+| 11 | GUI 冒烟 | Win32 `EnumWindows`/`EnumChildWindows` + `PIL.ImageGrab` 像素统计 | **PASS**，标题正确、可见外框 **1426×873**（窗口设定 1440×880）、111 个子窗口、无错误框、纸张内部墨迹比 **0.0154**、纸张左右留白 104/122 px（`paper_w=501 canvas_w=727`，居中未裁切） |
+| 12 | GUI 交互 | Win32 `SendMessageW(BM_CLICK)` 点「把格线写入 GCode」+「生成 GCode」 | **PASS**，笔画 130→137、GCode 2902→2920 行 |
+| 13 | GUI 配置 | 点「保存配置」→ 检查落盘 JSON → 点「读取配置」 | **PASS**，无 BOM、含 `machine/template/text` 三键、读取无对话框 |
+| 14 | GUI 调平页 | `gui_check.py level`（隐藏参数 `--tab=level` 直开标签页） | **PASS**，探测/高度图控件全部创建、热力图有像素、无错误框 |
 
 > 环境：VS 2022 Build Tools 17.14 安装于 `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`，含 `Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools`（带 .NET Framework 4.8 Targeting Pack）、NuGet、`vstest.console.exe`。安装时 `winget` 与官方 bootstrapper 均因环境里同时存在 `HTTPS_PROXY` / `https_proxy` 而失败（`exit code 5002`、`ProcessStartInfo.EnvironmentVariables` 抛「已添加项」）——清除大小写重复的代理变量后重跑才成功，此坑已记入 README。
 
@@ -114,6 +115,69 @@
 
 修复后界面实拍：`docs/gui_fixed.png`（四行混排：汉字／拉丁／数字／带调拼音／标点，全部正立可读）。
 
+## 3.4 第四轮：A 档功能全量实现 + 实时笔位置 + 视觉升级
+
+用户指令：「弹簧浮动笔架，A 档的全做，画布实时显示笔位置，界面花哨一些」。四件事合并为一轮，实现清单见 `docs/feature_gap_vs_grbl_plotter.md` 文首「实施状态」。
+
+### 新增模块
+
+| 文件 | 职责 |
+|---|---|
+| `src/App/Core/Machine/HeightMap.cs` | 高度图数据体：`Reset/Get/Set/At/Smooth/Normalize/MinZ/MaxZ/Mean/ToJson/FromJson`；双线性插值，区域外**夹取不外推** |
+| `src/App/Core/Machine/ProbePlanner.cs` | 探测点规划（`BuildPoints`/`DefaultArea/BuildSteps/BuildSinglePoint`）+ `[PRB:]` 解析 + 失败点补值 |
+| `src/App/Core/Machine/ProbeRunner.cs` | 纯状态机，不持有串口；`Start/Cancel/FeedLine/Poll` + 四个回调 |
+| `src/App/Core/Machine/Macros.cs` | 宏按钮模型与占位符展开，`config/macros.json` 持久化 |
+| `src/App/Core/Grbl/PenTracker.cs` | 实时笔位置（WPos 优先）+ 已发行号→当前笔画映射；同文件含 `ReconnectPolicy` |
+| `src/App/UI/Theme.cs` | 集中配色与 GDI+ 辅助（圆角、发光、按钮样式、字体回退） |
+| `src/App/UI/Canvas/Widgets.cs` | `JobStatusBar`（圆环进度 + 坐标胶囊 + 状态徽标）、`HeatmapView`（冷暖热力图 + 图例） |
+| `src/App/UI/ProbeDialog.cs` | 探测进度对话框，可取消 |
+| `tests/InkPen.Tests/MachineFeatureTests.cs` | 42 项：高度图 / 坐标逆变换 / Z 补偿 / 探测规划 / 探测器状态机 / 笔跟踪 / 重连退避 / 宏 |
+
+### 本轮实测发现的缺陷
+
+| 严重度 | 缺陷 | 根因 | 修复 |
+|---|---|---|---|
+| **P1 功能静默失效** | 高度图热力图一片空白，且 GCode 里没有任何 Z 补偿 | 两处叠加：①`HeightMap.FromJson` 先赋 `Valid` 再调 `Reset()`，`Reset` 把它清掉；②`IsUsable` 里判了 `Enabled`，而界面回填勾选框时触发 `CheckedChanged` 又把 `Enabled` 清掉。**两处都会让功能「看起来开了但完全没生效」** | `valid` 改为 `Reset()` 之后赋值；`IsUsable` 只管数据是否可用，开关状态归 `MachineConfig.UseHeightMap` 单点管理 |
+| P1 视觉崩塌 | 状态条三个坐标胶囊顶出右边界被裁 | 固定宽度排布 | 自适应：先缩胶囊间距，再丢状态徽标 |
+| P1 布局溢出 | HUD 信息框写死 250 px，长文案溢出 | 固定宽度 | 按 `MeasureString` 实测，上限 `ClientSize.Width - 40` |
+| P1 竖排不可达 | 调平页第三个分组框被面板底部裁掉，热力图看不见 | 三组固定高度累加超出可用高度 | 高度图组 300→256，`_heat` 226→184，说明文字下移到 y=478 |
+| P2 窗口被裁 | 1440×900 窗口在工作区 1440×900 上，底部任务栏遮住约 20 px | 窗口尺寸未考虑工作区 | 改 1440×880，并在 `Shown` 时 `ClampToWorkArea()` 夹到 `Screen.WorkingArea` |
+| P2 工具栏溢出 | 「笔位」「跟随」两个按钮被挤出可视区 | 按钮用长标签 | 全部改短标签（播放/暂停/单笔/复位/空程/笔位/跟随），完整说明移到 ToolTip |
+| P2 文案被裁 | 「自动探测」按钮文字缺一半 | 宽度 52 px 不够 | 70 px，端口框 140→122 让位 |
+| P2 溢出组框 | 「断开后自动重连」勾选框溢出连接组框 | 与其它控件挤一行 | 独占一行，连接组高度 138→166 |
+| **P2 自检编译断链** | `selftest.bat` 报 `CS0246: 未能找到类型 HeightMap` | `selftest.rsp` 是**逐文件列举**（不同于 `sources.rsp` 用 `/recurse`），新增源文件没有自动进入 | 补入三个新核心文件。这个坑值得记住：新增 `Core` 文件必须同时改两处编译清单 |
+
+### 测试有效性验证（注入验证）
+
+不只跑绿，还故意把实现改坏，确认测试会红。7 处注入中首轮只抓到 6 处：
+
+| 注入 | 首轮结果 | 加固方式 |
+|---|---|---|
+| `ToPaper` 撤变换顺序反了（先撤原点角再撤 Invert） | ✅ 抓到 | — |
+| 高度图行列转置 | ❌ **未抓到** | 原 2×2 网格对称，转置后数据不变；改 3×2 且各列值互异（0/0.2/0.4 与 1/1.2/1.4） |
+| 平滑不做归一化 / 插值不外推 | ✅ 抓到 | — |
+| 失败点不补值 | ✅ 抓到 | — |
+| 探测推进前不抬笔 | ❌ **未抓到** | 原断言只比 `sent[3] == "G0 Z5"`，而下一块自带的第一行也是它；改为断言总行数与 `sent[5]` 的具体值 |
+| 笔位置优先 MPos | ✅ 抓到 | — |
+| JSON 往返丢 Valid | ✅ 抓到 | — |
+
+还原后回到 140/140 全绿，且 `grep -n "MUTATION" -r src/` 为空。教训已写入 `docs/testing_pitfalls.md`。
+
+### 3.4.1 截图复查发现的视觉缺陷（全部靠看图发现，自动断言抓不到）
+
+自动化只能证明「控件存在、像素够多」，证明不了「好看」。把截图放大逐块看，又修了 7 处：
+
+| 缺陷 | 现象 | 修法 |
+|---|---|---|
+| **截图截错窗口** | `docs/gui_level.png` 存下来是浏览器和聊天窗口的截图，看着像界面崩了 | 根因是 `SetForegroundWindow` 被 Windows 前台锁忽略，被别的窗口盖住的区域被原样截下。改为 `AttachThreadInput` 到当前前台线程后再抬窗，并轮询 `GetForegroundWindow` 确认；截图前后各校验一次 |
+| **截图带进桌面** | 存档图右缘/底缘露出壁纸色与别的窗口文字 | `GetWindowRect` 在 Win10/11 上比可见窗口大一圈；改用 `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` |
+| jog 方向键布局错 | 上排只有 `Y+`，第二排 `X− Y− X+`——看着像少一条腿的「＋」，方向直觉错误 | 改为标准十字：上排 `X− Y+ X+`、下排居中 `Y−`；`Z+ Z−` 做右侧竖排一对 |
+| HUD 压住纸张 | 左上角信息框盖住纸面顶部一行 | `Fit()` 的上边距从 36 px 加到 72 px，纸张在「扣掉 HUD 的剩余区域」里居中 |
+| 比例尺压住纸张 | 原画在 `Height-26`，纸张铺满后正好压在纸底边上 | 移到右上角（HUD 在左上，宽度上限压到画布宽度 62%） |
+| 多行框横向滚动条 | `ScrollBars.Both` + `WordWrap=false`，中文长句横向溢出，多出一条永远用不上的横条 | 改 `Vertical` + `WordWrap=true` |
+| 「读取配置」文字被裁 | 按钮宽 60 px 装不下四个汉字 | 改成三行布局：导出整行、保存/读取各 126 px |
+| 工具栏选中框是系统蓝 | `CheckOnClick` 的「空程」「笔位」显示系统蓝色选中框，与青/琥珀配色打架，旁边「播放」却是纯文字 | 加 `BarRenderer`：悬停极淡青底、选中淡青底 + 细边、标签文字压暗一档 |
+
 ## 4. 本轮 SBOM 勘误（`NOTICE.md` / `README.md` / `LICENSES/ACKNOWLEDGEMENT.txt`）
 
 - **经典 Hershey ≠ SIL OFL 1.1**：为自带 USE RESTRICTION 的宽松许可（自由使用 + 致谢 + 禁转 U.S. NTIS 格式），既非 OFL 也非 GPL。OFL 1.1 仅覆盖未随本发行版提供的 29 个 EMS 现代衍生字体。
@@ -129,6 +193,8 @@
 2. 标定 `安全 Z` / `书写 Z` / Z 方向 / `$102`；本机奎享默认舵机参数不可照抄。
 3. 校准原点角、X/Y 轴方向、幅面。
 4. 试写中文页，验证暂停 / 急停 / 断点续写。
+5. **（第四轮新增）** 探针接线与探测验证：探针是否与笔共用 Z 信号、接触时 `[PRB:]` 标志位是否置 1、Z 轴下探 8 mm 是否够、`ProbeFeedMmPerMin=100` 是否合适、`PressDepthMm` 实际取值。
+6. **（第四轮新增）** 自动重连实测：拔 USB 后观察退避重连时序，确认重连后「需重设原点」提示有效。
 
 ### 尚未实现（M2–M5）
 - 四类模板高级编辑器与另存、模板预设持久化。
@@ -146,7 +212,7 @@
 
 ```bat
 cd D:\Writer\InkPen\build
-INKPEN_CI=1 cmd /c test.bat        :: MSBuild 编译 + 98 个单元测试
+INKPEN_CI=1 cmd /c test.bat        :: MSBuild 编译 + 140 个单元测试
 INKPEN_CI=1 cmd /c build.bat       :: csc 链，产出 dist\InkPen.exe
 INKPEN_CI=1 cmd /c selftest.bat    :: 9 作业 / 66 断言 / 10 份 .nc
 ```
@@ -154,8 +220,8 @@ INKPEN_CI=1 cmd /c selftest.bat    :: 9 作业 / 66 断言 / 10 份 .nc
 cd D:\Writer\InkPen
 C:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe tools\validate_gcode.py --selftest
 C:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe tools\validate_gcode.py dist\selftest\a_mixed.nc 210 297
-cmd /c tools\gui_check\gui_check.bat all    :: 界面冒烟 + 交互 + 配置三项
+cmd /c tools\gui_check\gui_check.bat all    :: 冒烟 + 交互 + 配置 + 调平页，共 4 项
 ```
 
 `tools/gui_check/gui_check.py` 只用 Win32 消息驱动，不依赖窗口位置与人工点击，可无人值守重复跑；
-smoke 会顺带把截图写到 `docs/gui_smoke.png`。
+smoke 把截图写到 `docs/gui_smoke.png`，level 写到 `docs/gui_level.png`。
