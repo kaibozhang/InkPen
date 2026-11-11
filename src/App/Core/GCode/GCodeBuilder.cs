@@ -4,7 +4,7 @@ using System.Globalization;
 
 namespace InkPen.Core
 {
-    /// <summary>纸面 mm 坐标 → 机器坐标（原点角 / 轴反转）。</summary>
+    /// <summary>纸面 mm 坐标 ↔ 机器坐标（原点角 / 轴反转）。</summary>
     public static class CoordTransform
     {
         public static Pt ToMachine(Pt p, MachineConfig m)
@@ -19,6 +19,26 @@ namespace InkPen.Core
             }
             if (m.InvertX) x = -x;
             if (m.InvertY) y = -y;
+            return new Pt(x, y);
+        }
+
+        /// <summary>
+        /// 机器坐标 → 纸面 mm。ToMachine 的严格逆运算。
+        /// 顺序必须与正变换相反：先撤销 Invert，再撤销原点角。
+        /// 两者不可交换（x→W-x 与 x→-x 复合的结果不同），写反了笔位置会跑偏一整个纸宽。
+        /// </summary>
+        public static Pt ToPaper(Pt p, MachineConfig m)
+        {
+            double x = p.X, y = p.Y;
+            if (m.InvertX) x = -x;
+            if (m.InvertY) y = -y;
+            switch (m.Origin)
+            {
+                case OriginCorner.TopLeft: y = m.PaperHeightMm - y; break;
+                case OriginCorner.BottomRight: x = m.PaperWidthMm - x; break;
+                case OriginCorner.TopRight:
+                    x = m.PaperWidthMm - x; y = m.PaperHeightMm - y; break;
+            }
             return new Pt(x, y);
         }
     }
@@ -165,6 +185,9 @@ namespace InkPen.Core
 
             bool penDown = false;
             double lastX = 0, lastY = 0;
+            // 上一次真正写给 GRBL 的落笔 Z。高度补偿是「相对上一次的变化量」触发，
+            // 所以必须跨笔画、跨页保留，否则每次换笔都会多吐一条无意义的 Z 行。
+            double lastZ = m.WriteZ;
             foreach (Page page in job.Pages)
             {
                 if (includeGrid && job.Template.DrawGrid)
@@ -174,7 +197,8 @@ namespace InkPen.Core
                         List<Pt> line = new List<Pt>();
                         line.Add(new Pt(gl.X1, gl.Y1));
                         line.Add(new Pt(gl.X2, gl.Y2));
-                        EmitPath(job, line, ref penDown, ref lastX, ref lastY, page.Index, -1, -1, -1, 0);
+                        EmitPath(job, line, ref penDown, ref lastX, ref lastY, ref lastZ,
+                                 page.Index, -1, -1, -1, 0);
                     }
                 }
 
@@ -206,7 +230,7 @@ namespace InkPen.Core
                             Emit(job, "G0 Z" + F(m.SafeZ), null);
                             penDown = false;
                         }
-                        EmitPath(job, pts, ref penDown, ref lastX, ref lastY,
+                        EmitPath(job, pts, ref penDown, ref lastX, ref lastY, ref lastZ,
                                  page.Index, pg.LineIndex, pg.CharIndex, si, pg.Ch);
                     }
                 }
@@ -216,14 +240,31 @@ namespace InkPen.Core
             AddLines(job, m.EndGCode, -1, -1, -1, -1, 0);
         }
 
+        /// <summary>高度图补偿阈值：小于此值不单独写 Z，避免行数暴涨而精度无收益。</summary>
+        public const double ZCompEpsilon = 0.005;
+
+        /// <summary>某个纸面点应有的落笔 Z（机器坐标）。未启用高度图时恒为 WriteZ。</summary>
+        public static double CompensatedZ(Job job, double paperX, double paperY)
+        {
+            MachineConfig m = job.Machine;
+            if (m == null) return 0;
+            if (!m.UseHeightMap) return m.WriteZ;
+            HeightMap map = job.HeightMap;
+            if (map == null || !map.IsUsable) return m.WriteZ;
+            return m.WriteZ + map.At(paperX, paperY);
+        }
+
         private static void EmitPath(Job job, List<Pt> paperPts, ref bool penDown,
-            ref double lastX, ref double lastY, int pageIdx, int lineIdx,
+            ref double lastX, ref double lastY, ref double lastZ, int pageIdx, int lineIdx,
             int charIdx, int strokeIdx, int cp)
         {
             MachineConfig m = job.Machine;
             List<Pt> machine = new List<Pt>();
             foreach (Pt p in paperPts) machine.Add(CoordTransform.ToMachine(p, m));
             Pt start = machine[0];
+
+            bool comp = m.UseHeightMap && job.HeightMap != null && job.HeightMap.IsUsable;
+            double z0 = CompensatedZ(job, paperPts[0].X, paperPts[0].Y);
 
             WritePath wp = new WritePath();
             wp.PageIndex = pageIdx; wp.LineIndex = lineIdx; wp.CharIndex = charIdx;
@@ -239,18 +280,37 @@ namespace InkPen.Core
             if (!penDown)
             {
                 Emit(job, "G0 X" + F(start.X) + " Y" + F(start.Y), MakeMeta(pageIdx, lineIdx, charIdx, strokeIdx, cp, false));
-                Emit(job, "G1 Z" + F(m.WriteZ) + " F" + F(m.ZFeed), MakeMeta(pageIdx, lineIdx, charIdx, strokeIdx, cp, false));
+                Emit(job, "G1 Z" + F(z0) + " F" + F(m.ZFeed), MakeMeta(pageIdx, lineIdx, charIdx, strokeIdx, cp, false));
                 if (m.DwellSec > 0) Emit(job, "G4 P" + F(m.DwellSec), null);
                 penDown = true;
+                lastZ = z0;
             }
+            else if (comp && Math.Abs(z0 - lastZ) >= ZCompEpsilon)
+            {
+                // 连笔（不抬笔）换笔画时高度变了：把 Z 并进这一笔的第一条 XY 行
+                Emit(job, "G1 Z" + F(z0) + " F" + F(m.ZFeed),
+                     MakeMeta(pageIdx, lineIdx, charIdx, strokeIdx, cp, false));
+                lastZ = z0;
+            }
+
             for (int i = 1; i < machine.Count; i++)
             {
                 Pt p = machine[i];
+                string zseg = "";
+                if (comp)
+                {
+                    double pz = CompensatedZ(job, paperPts[i].X, paperPts[i].Y);
+                    if (Math.Abs(pz - lastZ) >= ZCompEpsilon)
+                    {
+                        zseg = " Z" + F(pz);
+                        lastZ = pz;
+                    }
+                }
                 if (i == 1)
-                    Emit(job, "G1 X" + F(p.X) + " Y" + F(p.Y) + " F" + F(m.XYFeed),
+                    Emit(job, "G1 X" + F(p.X) + " Y" + F(p.Y) + zseg + " F" + F(m.XYFeed),
                          MakeMeta(pageIdx, lineIdx, charIdx, strokeIdx, cp, true));
                 else
-                    Emit(job, "G1 X" + F(p.X) + " Y" + F(p.Y),
+                    Emit(job, "G1 X" + F(p.X) + " Y" + F(p.Y) + zseg,
                          MakeMeta(pageIdx, lineIdx, charIdx, strokeIdx, cp, true));
             }
             lastX = machine[machine.Count - 1].X;

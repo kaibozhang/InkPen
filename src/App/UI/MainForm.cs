@@ -26,6 +26,28 @@ namespace InkPen.UI
         private bool _legacyJog = false;
         private bool _loading = false;
 
+        // 实时笔位置（GRBL → 纸面坐标）
+        private readonly PenTracker _pen = new PenTracker();
+        // 高度图 / 探测
+        private HeightMap _heightMap = new HeightMap();
+        private readonly ProbeRunner _probe = new ProbeRunner();
+        private readonly Timer _probeWatch = new Timer();
+        private ProbeDialog _probeDlg;
+        private bool _singleProbe = false;
+        // 宏按钮
+        private MacroSet _macros = MacroSet.Defaults();
+        // 自动重连
+        private readonly ReconnectPolicy _reconnectPolicy = new ReconnectPolicy();
+        private readonly Timer _reconnectTimer = new Timer();
+        private bool _userDisconnect = false;
+        private bool _reconnecting = false;
+        private bool _closing = false;
+        private string _hmPath;
+        private string _macroPath;
+
+        /// <summary>界面自动化截图用：启动时默认选中的右栏标签页（空 = 机器页）。</summary>
+        public static string StartupTab = "";
+
         public MainForm()
         {
             BuildUi();
@@ -38,6 +60,8 @@ namespace InkPen.UI
                 if (Directory.Exists(Path.Combine(alt, "glyphs"))) _dataDir = alt;
             }
             _configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config", "config.json");
+            _hmPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config", "heightmap.json");
+            _macroPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config", "macros.json");
 
             _debounce.Interval = 320;
             _debounce.Tick += delegate(object s, EventArgs e) { _debounce.Stop(); Generate(); };
@@ -46,14 +70,24 @@ namespace InkPen.UI
             _settingsDebounce.Interval = 300;
             _settingsDebounce.Tick += delegate(object s, EventArgs e) { _settingsDebounce.Stop(); RefreshSettingsGrid(); };
 
+            // 探测超时看门狗：ProbeRunner 只在被喂行时推进，没人喂就会一直挂着
+            _probeWatch.Interval = 500;
+            _probeWatch.Tick += delegate(object s, EventArgs e) { _probe.Poll(DateTime.UtcNow); };
+
+            _reconnectTimer.Interval = 1000;
+            _reconnectTimer.Tick += delegate(object s, EventArgs e) { TryReconnect(); };
+
             WireEvents();
             LoadConfig(false);
+            LoadMacros();
+            LoadHeightMapFile(false);
             ApplyConfigToUi();
             LoadFonts();
             RefreshPorts();
             _loading = false;
             RefreshSettingsGrid();
             Generate();     // 首屏直接出预览，避免打开后中栏空白、用户以为没生效
+            ApplyStartupTab();
             Log("InkPen 启动完成。数据目录: " + _dataDir);
             Log("提示：先离线仿真 + GCode 静态校验，Z 参数标定后再接真机。");
         }
@@ -111,18 +145,34 @@ namespace InkPen.UI
             };
             _btnSimPause.Click += delegate { _sim.Pause(); };
             _btnSimStep.Click += delegate { _sim.Step(); };
-            _btnSimStop.Click += delegate { _sim.Stop(); _progress.Value = 0; _progressLbl.Text = "仿真已复位"; };
+            _btnSimStop.Click += delegate
+            {
+                _sim.Stop();
+                _bar.Progress = 0; _bar.Total = 0; _bar.Error = false;
+                _bar.StateText = "仿真已复位";
+                _bar.SubText = "点击 ▶ 播放按笔画回放整篇";
+                _bar.Invalidate();
+            };
             _sim.OnProgress += delegate(int cur, int total)
             {
                 Ui(delegate
                 {
-                    _progress.Maximum = Math.Max(1, total);
-                    _progress.Value = Math.Min(cur, _progress.Maximum);
-                    _progressLbl.Text = "仿真 " + cur + " / " + total + " 笔";
+                    _bar.Progress = cur; _bar.Total = total; _bar.Error = false;
+                    _bar.StateText = "仿真 " + cur + " / " + total + " 笔";
+                    _bar.SubText = "第 " + (cur + 1) + " 笔正在回放";
+                    _bar.Invalidate();
                     UpdatePageLabel();
                 });
             };
-            _sim.OnFinished += delegate { Ui(delegate { _progressLbl.Text = "仿真完成（" + _job.Paths.Count + " 笔）"; }); };
+            _sim.OnFinished += delegate
+            {
+                Ui(delegate
+                {
+                    _bar.StateText = "仿真完成（" + _job.Paths.Count + " 笔）";
+                    _bar.SubText = "确认无误后可接真机书写";
+                    _bar.Invalidate();
+                });
+            };
             _btnZoomIn.Click += delegate { _canvas.Zoom = _canvas.Zoom * 1.25; };
             _btnZoomOut.Click += delegate { _canvas.Zoom = _canvas.Zoom / 1.25; };
             _btnFit.Click += delegate { _canvas.Fit(); };
@@ -146,7 +196,12 @@ namespace InkPen.UI
                     });
                 }, delegate(string s) { Ui(delegate { _detectLbl.Text = s; }); });
             };
-            _btnConnect.Click += delegate { ToggleConnect(); };
+            _btnConnect.Click += delegate
+            {
+                // 手动断开要记下来：否则「掉线自动重连」会把用户主动断开的端口又连回去
+                _userDisconnect = _grbl.IsOpen;
+                ToggleConnect();
+            };
 
             // jog
             _btnJogXp.Click += delegate { Jog("X", 1); };
@@ -163,6 +218,19 @@ namespace InkPen.UI
             _btnOv100.Click += delegate { _grbl.SendRealtime(0x90); };
             _btnOvUp.Click += delegate { _grbl.SendRealtime(0x91); };
             _btnOvDown.Click += delegate { _grbl.SendRealtime(0x92); };
+            // GRBL 实时倍率只有「±10% / 复位 100%」三种指令，没有任意百分比接口。
+            // 所以按钮按 10% 的整数倍发，−50% 就是连发 5 次 0x92，不做假的「精调 1%」。
+            foreach (Button b in _ovFine)
+            {
+                Button btn = b;
+                btn.Click += delegate
+                {
+                    int delta = (int)btn.Tag;
+                    int times = Math.Abs(delta) / 10;
+                    if (delta > 0) for (int i = 0; i < times; i++) _grbl.SendRealtime(0x91);
+                    else for (int i = 0; i < times; i++) _grbl.SendRealtime(0x92);
+                };
+            }
             _btnPenTest.Click += delegate { PenTest(); };
             _btnSendCmd.Click += delegate
             {
@@ -178,6 +246,52 @@ namespace InkPen.UI
                 }
             };
 
+            // 宏按钮（A4）
+            for (int i = 0; i < _macroBtn.Length; i++)
+            {
+                Button b = _macroBtn[i];
+                b.Click += delegate { RunMacro((int)b.Tag); };
+                b.MouseDown += delegate(object s, MouseEventArgs e)
+                {
+                    if (e.Button == MouseButtons.Right) EditMacro((int)b.Tag);
+                };
+                b.DoubleClick += delegate { EditMacro((int)b.Tag); };
+            }
+            _btnMacroEdit.Click += delegate { EditMacro(0); };
+            _btnMacroReset.Click += delegate
+            {
+                _macros = MacroSet.Defaults();
+                SaveMacros();
+                RefreshMacroButtons();
+                Log("宏按钮已恢复默认");
+            };
+
+            // 探测 / 调平（A1 / A5）
+            _btnProbeStart.Click += delegate { StartGridProbe(); };
+            _btnProbeStop.Click += delegate { _probe.Cancel(); _probeWatch.Stop(); };
+            _btnProbeSingle.Click += delegate { StartSingleProbe(); };
+            _btnProbeClear.Click += delegate
+            {
+                _heightMap = new HeightMap();
+                _useHeightMap.Checked = false;
+                _heat.SetMap(_heightMap);
+                _hmLbl.Text = "高度图已清除";
+                SaveHeightMapFile();
+                Generate();
+            };
+            _btnHmSave.Click += delegate { SaveHeightMapFile(); Log("高度图已保存: " + _hmPath); };
+            _btnHmLoad.Click += delegate { LoadHeightMapFile(true); Generate(); };
+            _useHeightMap.CheckedChanged += delegate { ApplyUiToConfig(); Generate(); };
+
+            // 实时笔位置
+            _btnPenShow.CheckedChanged += delegate
+            {
+                if (!_btnPenShow.Checked) _canvas.ClearRealtime();
+                else if (_pen.HasPosition) PushPenToCanvas(false);
+            };
+            _btnFollow.CheckedChanged += delegate { _canvas.Follow = _btnFollow.Checked; };
+
+
             // 书写任务
             _btnStart.Click += delegate { StartWriting(0); };
             _btnSendPause.Click += delegate { _stream.Pause(); Log("已请求暂停（等待 IDLE）"); };
@@ -186,7 +300,10 @@ namespace InkPen.UI
             _btnSendStop.Click += delegate
             {
                 _stream.Stop();
-                _progressLbl.ForeColor = SystemColors.ControlText;
+                _bar.Error = false;
+                _bar.StateText = "已停止";
+                _bar.SubText = "笔停在当前位置，抬起笔后可重新开始或断点续写";
+                _bar.Invalidate();
                 Log("已停止");
             };
             _btnResumeFrom.Click += delegate
@@ -229,8 +346,21 @@ namespace InkPen.UI
                 {
                     _btnConnect.Text = open ? "断开" : "连接";
                     _statusLbl.Text = "状态：" + (open ? "已连接" : "未连接");
-                    _statusLbl.ForeColor = open ? Color.FromArgb(40, 130, 80) : Color.FromArgb(160, 70, 60);
-                    if (!open) { _settingsGrid.Rows.Clear(); _grbl.Settings.Values.Clear(); }
+                    _statusLbl.ForeColor = open ? Theme.Ok : Color.FromArgb(160, 70, 60);
+                    _bar.Connected = open;
+                    _bar.Invalidate();
+                    if (!open)
+                    {
+                        _settingsGrid.Rows.Clear();
+                        _grbl.Settings.Values.Clear();
+                        _canvas.ClearRealtime();
+                        ScheduleReconnect();
+                    }
+                    else
+                    {
+                        _reconnectTimer.Stop();
+                        _reconnectPolicy.Reset();
+                    }
                 });
             };
             _grbl.OnSettingsChanged += delegate
@@ -241,36 +371,42 @@ namespace InkPen.UI
                     if (!_settingsDebounce.Enabled) _settingsDebounce.Start();
                 });
             };
-            _grbl.OnStatus += delegate(GrblStatus st)
+            _grbl.OnStatus += delegate(GrblStatus st) { Ui(delegate { OnGrblStatus(st); }); };
+
+            // 探测流程靠原始行拿 [PRB:]；非探测期间直接返回，零开销
+            _grbl.OnRawLine += delegate(string line)
             {
-                Ui(delegate
-                {
-                    _droLbl.Text = "X " + st.WX.ToString("F2") + "   Y " + st.WY.ToString("F2")
-                                 + "   Z " + st.WZ.ToString("F2") + "\n" + st.State
-                                 + " | MPos " + st.MX.ToString("F1") + "," + st.MY.ToString("F1")
-                                 + " | Bf " + st.BufferFree + " | Ov " + st.FeedOverride + "%";
-                });
+                if (!_probe.Running) return;
+                Ui(delegate { _probe.FeedLine(line); });
             };
+
             _stream.OnProgress += delegate(int sent, int total, string state)
             {
                 Ui(delegate
                 {
-                    _progress.Maximum = Math.Max(1, total);
-                    _progress.Value = Math.Min(sent, _progress.Maximum);
+                    _bar.Progress = sent;
+                    _bar.Total = total;
+                    _pen.SetSentLines(Math.Min(sent, _job == null ? 0 : _job.GCode.Count));
+                    if (_job != null) PushPenToCanvas(false);
+
                     double elapsed = (DateTime.Now - _sendStart).TotalSeconds;
                     double eta = sent > 0 ? elapsed / sent * (total - sent) : 0;
                     if (state == "error")
                     {
-                        _progressLbl.ForeColor = Color.FromArgb(170, 50, 45);
-                        _progressLbl.Text = "作业已中止 · " + _stream.LastError
+                        _bar.Error = true;
+                        _bar.StateText = "作业已中止";
+                        _bar.SubText = _stream.LastError
                             + " · 可从 GCode 第 " + _stream.FailedLineNumber + " 行续写";
                     }
                     else
                     {
-                        _progressLbl.Text = state + "  " + sent + " / " + total
-                            + " 行  ·  已用 " + elapsed.ToString("F0") + "s"
-                            + "  ·  预计剩余 " + eta.ToString("F0") + "s";
+                        _bar.Error = false;
+                        _bar.StateText = StateLabel(state) + "  " + sent + " / " + total + " 行";
+                        _bar.SubText = "已用 " + elapsed.ToString("F0") + "s · 预计剩余 "
+                                     + eta.ToString("F0") + "s · 第 " + _pen.CompletedPaths + " / "
+                                     + _pen.PathCount + " 笔";
                     }
+                    _bar.Invalidate();
                     if (state == "finish") Log("书写完成");
                     if (state == "stop") Log("书写停止");
                 });
@@ -278,7 +414,114 @@ namespace InkPen.UI
             _stream.OnLog += delegate(string s) { Log(s); };
             _stream.OnError += delegate(string s) { Log("!! " + s); };
 
-            FormClosing += delegate { try { _stream.Stop(); _grbl.Dispose(); _fonts.Dispose(); } catch { } };
+            FormClosing += delegate
+            {
+                _closing = true;
+                try { _stream.Stop(); _grbl.Dispose(); _fonts.Dispose(); } catch { }
+            };
+        }
+
+        /// <summary>进度状态码 → 中文。界面文案只在这里改，避免各处写法不一致。</summary>
+        private static string StateLabel(string state)
+        {
+            switch (state)
+            {
+                case "start": return "开始书写";
+                case "run": return "书写中";
+                case "pause": return "已暂停";
+                case "resume": return "继续";
+                case "finish": return "已完成";
+                case "stop": return "已停止";
+                case "error": return "已中止";
+                default: return state;
+            }
+        }
+
+        /// <summary>GRBL 状态报文 → DRO、状态胶囊、画布笔尖。全部收敛到一处，避免各控件各读一份不一致。</summary>
+        private void OnGrblStatus(GrblStatus st)
+        {
+            _droLbl.Text = "X " + st.WX.ToString("F2") + "   Y " + st.WY.ToString("F2")
+                         + "   Z " + st.WZ.ToString("F2") + "\n" + st.State
+                         + " | MPos " + st.MX.ToString("F1") + "," + st.MY.ToString("F1")
+                         + " | Bf " + st.BufferFree + " | Ov " + st.FeedOverride + "%";
+
+            _bar.Connected = _grbl.IsOpen;
+            _bar.GrblState = st.State.ToString();
+            _bar.BufferFree = st.BufferFree;
+            _bar.Override = st.FeedOverride;
+            _bar.SetPos(st.WX, st.WY, st.WZ, true);
+            _bar.PenDown = _pen.PenDown;
+
+            _pen.SetStatus(st);
+            PushPenToCanvas(false);
+        }
+
+        /// <summary>把 PenTracker 的当前状态刷到画布。forceFit=false 时保留用户视图。</summary>
+        private void PushPenToCanvas(bool forceFit)
+        {
+            if (_job == null || _canvas == null) return;
+            if (!_btnPenShow.Checked || !_pen.HasPosition) return;
+
+            int page = _pen.PageIndex >= 0 ? _pen.PageIndex : _canvas.PageIndex;
+            _canvas.SetRealtime(_pen.Paper, _pen.PenDown, _pen.CurrentPath, page);
+            if (forceFit) _canvas.Fit();
+        }
+
+        // ---------- 自动重连（A3） ----------
+
+        /// <summary>掉线后排程一次重连。用户主动断开 / 正在关闭 / 已被 job 主动停止时不排。</summary>
+        private void ScheduleReconnect()
+        {
+            if (_closing || _userDisconnect || !_autoReconnect.Checked) return;
+            if (_reconnectPolicy.Port.Length == 0) return;
+            _reconnectPolicy.Reset();
+            _reconnectTimer.Stop();
+            _reconnectTimer.Interval = 1000;
+            _reconnectTimer.Start();
+            Log("连接断开，1s 后开始自动重连（最多 " + _reconnectPolicy.MaxAttempts + " 次）");
+        }
+
+        private void TryReconnect()
+        {
+            if (_closing || _userDisconnect || !_autoReconnect.Checked || _grbl.IsOpen || _reconnecting)
+            {
+                _reconnectTimer.Stop();
+                return;
+            }
+            if (!_reconnectPolicy.NoteAttempt())
+            {
+                _reconnectTimer.Stop();
+                Log("自动重连失败次数已达上限，请检查 USB / 电源后手动连接");
+                _bar.SubText = "自动重连已放弃";
+                _bar.Invalidate();
+                return;
+            }
+
+            _reconnecting = true;
+            try
+            {
+                Log(_reconnectPolicy.Describe() + "：" + _reconnectPolicy.Port);
+                _bar.SubText = _reconnectPolicy.Describe();
+                _bar.Invalidate();
+
+                if (_grbl.Connect(_reconnectPolicy.Port, _reconnectPolicy.Baud))
+                {
+                    _reconnectTimer.Stop();
+                    Log("自动重连成功");
+                    _grbl.SendCommand("$I");
+                    _grbl.SendCommand("$$");
+                    // 重连后 GRBL 已软复位，原点全丢：必须提醒用户重新设原点，
+                    // 否则继续写会把字写到纸外（这是静默损坏纸张的典型事故）
+                    Log("注意：重连会软复位控制器，机械原点/工件坐标需重新设定后再续写");
+                    _bar.SubText = "已重连 · 请重新设原点后继续";
+                    _bar.Invalidate();
+                }
+                else
+                {
+                    _reconnectTimer.Interval = (int)Math.Max(1.0, _reconnectPolicy.NextDelaySec()) * 1000;
+                }
+            }
+            finally { _reconnecting = false; }
         }
 
         private void Ui(Action a)
@@ -297,9 +540,17 @@ namespace InkPen.UI
             });
         }
 
-        private void UpdatePageLabel()
+        /// <summary>把 --tab=xxx 映射到右栏标签页序号；名字不认识就保持默认，不抛异常。</summary>
+        private void ApplyStartupTab()
         {
-            if (_pageLbl == null || _canvas == null) return;
+            if (string.IsNullOrEmpty(StartupTab)) return;
+            string[] names = new string[] { "machine", "level", "settings", "gcode", "params", "log" };
+            int idx = Array.IndexOf(names, StartupTab.ToLowerInvariant());
+            if (idx >= 0 && idx < _rightTabs.TabPages.Count) _rightTabs.SelectedIndex = idx;
+        }
+
+        private void UpdatePageLabel()
+        {            if (_pageLbl == null || _canvas == null) return;
             _pageLbl.Text = "页 " + (_canvas.PageIndex + 1) + "/" + _canvas.PageCount;
         }
 
@@ -346,6 +597,17 @@ namespace InkPen.UI
             _cfg.BaselineWaveMm = _jWave.Value / 100.0;
             _cfg.TailStrength = _tail.Value / 500.0;
             _cfg.AckTimeoutMs = (int)_ackTimeout.Value * 1000;
+            _cfg.AutoReconnect = _autoReconnect.Checked;
+
+            _cfg.UseHeightMap = _useHeightMap.Checked;
+            _cfg.ProbeMarginMm = (double)_probeMargin.Value;
+            _cfg.ProbeCols = (int)_probeCols.Value;
+            _cfg.ProbeRows = (int)_probeRows.Value;
+            _cfg.ProbeTravelMm = (double)_probeTravel.Value;
+            _cfg.ProbeFeedMmPerMin = (double)_probeFeed.Value;
+            _cfg.PressDepthMm = (double)_pressDepth.Value;
+            _heightMap.Enabled = _useHeightMap.Checked;
+            _heightMap.PressDepthMm = _cfg.PressDepthMm;
         }
 
         private void ApplyConfigToUi()
@@ -385,7 +647,34 @@ namespace InkPen.UI
             _jWave.Value = (int)Clamp(_cfg.BaselineWaveMm * 100, 0, 100);
             _tail.Value = (int)Clamp(_cfg.TailStrength * 500, 0, 100);
             _ackTimeout.Value = (decimal)Clamp(_cfg.AckTimeoutMs / 1000, 0, 600);
+            _autoReconnect.Checked = _cfg.AutoReconnect;
+
+            _probeMargin.Value = (decimal)Clamp(_cfg.ProbeMarginMm, 0, 100);
+            _probeCols.Value = (decimal)Clamp(_cfg.ProbeCols, 2, 16);
+            _probeRows.Value = (decimal)Clamp(_cfg.ProbeRows, 2, 16);
+            _probeTravel.Value = (decimal)Clamp(_cfg.ProbeTravelMm, 1, 50);
+            _probeFeed.Value = (decimal)Clamp(_cfg.ProbeFeedMmPerMin, 1, 3000);
+            _pressDepth.Value = (decimal)Clamp(_cfg.PressDepthMm, 0, 3);
+            _useHeightMap.Checked = _cfg.UseHeightMap && _heightMap.Valid;
+
+            RefreshMacroButtons();
+            _heat.SetMap(_heightMap);
+            UpdateHeightLabel();
             _loading = false;
+        }
+
+        private void UpdateHeightLabel()
+        {
+            if (_hmLbl == null) return;
+            if (_heightMap == null || !_heightMap.Valid)
+            {
+                _hmLbl.Text = "未启用高度补偿";
+            }
+            else
+            {
+                _hmLbl.Text = _heightMap.Summary()
+                            + (_cfg.UseHeightMap ? "\n补偿已启用：落笔 Z 会随纸面起伏调整" : "\n补偿未启用（勾选上方开关）");
+            }
         }
 
         private static double Clamp(double v, double a, double b) { return Math.Max(a, Math.Min(b, v)); }
@@ -462,12 +751,14 @@ namespace InkPen.UI
                 j.Text = _txt.Text;
                 j.Template = _tpl;
                 j.Machine = _cfg;
+                j.HeightMap = _heightMap;
                 j.Pages = InkPen.Core.LayoutEngine.Layout(j, _fonts);
                 GCodeBuilder.Build(j, true);
 
                 GCodeValidator v = new GCodeValidator();
                 v.Validate(j);
                 _job = j;
+                _pen.SetJob(j);
                 _canvas.ShowGrid = _tpl.ShowGrid;
                 _canvas.SetJob(j);
                 _sim.SetJob(j);
@@ -476,12 +767,20 @@ namespace InkPen.UI
 
                 string miss = j.MissingChars.Count == 0 ? "无缺字" : "缺字 " + j.MissingChars.Count + " 个: " + string.Join("", j.MissingChars.ToArray());
                 _infoLbl.Text = "页 " + j.Pages.Count + " · 笔画 " + j.Paths.Count
-                              + " · GCode " + j.GCode.Count + " 行 · " + miss;
+                              + " · GCode " + j.GCode.Count + " 行 · " + miss
+                              + (_cfg.UseHeightMap && _heightMap.IsUsable ? "\n高度补偿已启用" : "");
                 foreach (string e in v.Errors) Log("校验错误: " + e);
                 foreach (string w in v.Warnings) Log("校验警告: " + w);
-                _progressLbl.Text = v.Errors.Count == 0
-                    ? "静态校验通过（" + v.Warnings.Count + " 条警告）· 可先仿真再真机"
-                    : "静态校验发现 " + v.Errors.Count + " 个错误，请检查日志";
+                _bar.Error = v.Errors.Count > 0;
+                _bar.StateText = v.Errors.Count == 0 ? "静态校验通过" : "静态校验发现 "
+                               + v.Errors.Count + " 个错误";
+                _bar.SubText = v.Errors.Count == 0
+                    ? "笔画 " + j.Paths.Count + " · GCode " + j.GCode.Count + " 行 · "
+                      + v.Warnings.Count + " 条警告" + (_heightMap.IsUsable ? " · 高度补偿 " + _heightMap.Cols + "×" + _heightMap.Rows : "")
+                    : "请先看日志修正，勿直接接真机";
+                _bar.Progress = 0;
+                _bar.Total = 0;
+                _bar.Invalidate();
             }
             catch (Exception ex)
             {
@@ -585,6 +884,322 @@ namespace InkPen.UI
             Log("试笔：抬→落→停 0.5s→抬。请确认笔尖接触与 Z 方向。");
         }
 
+        // ---------- 宏按钮（A4） ----------
+
+        private void RefreshMacroButtons()
+        {
+            if (_macroBtn == null) return;
+            for (int i = 0; i < _macroBtn.Length; i++)
+            {
+                bool has = i < _macros.Buttons.Count;
+                _macroBtn[i].Text = has && _macros.Buttons[i].Label.Length > 0
+                    ? _macros.Buttons[i].Label
+                    : "（空）";
+                _macroBtn[i].Tag = i;
+                _macroBtn[i].Enabled = i < _macros.Buttons.Count;
+            }
+        }
+
+        private void RunMacro(int i)
+        {
+            if (i < 0 || i >= _macros.Buttons.Count) return;
+            if (!_grbl.IsOpen) { Log("未连接，宏「" + _macros.Buttons[i].Label + "」未发送"); return; }
+            if (ManualBlocked()) return;
+
+            string cmd = MacroSet.Expand(_macros.Buttons[i].Command, _cfg);
+            foreach (string line in MacroSet.Split(cmd))
+                _grbl.SendCommand(line);
+            Log("宏「" + _macros.Buttons[i].Label + "」→ " + cmd.Replace("\n", " / "));
+        }
+
+        private void EditMacro(int i)
+        {
+            if (i < 0 || i >= _macros.Buttons.Count) return;
+            MacroButton b = _macros.Buttons[i];
+
+            Form f = new Form();
+            f.Text = "编辑宏按钮 " + (i + 1);
+            f.Font = _ui;
+            f.FormBorderStyle = FormBorderStyle.FixedDialog;
+            f.StartPosition = FormStartPosition.CenterParent;
+            f.ClientSize = new Size(420, 230);
+            f.MinimizeBox = f.MaximizeBox = false;
+            f.BackColor = Theme.Panel;
+
+            Label l1 = new Label();
+            l1.Text = "按钮文字"; l1.Left = 14; l1.Top = 14; l1.Width = 380;
+            l1.ForeColor = Theme.Text; f.Controls.Add(l1);
+
+            TextBox t1 = new TextBox();
+            t1.Text = b.Label; t1.Left = 14; t1.Top = 36; t1.Width = 390;
+            f.Controls.Add(t1);
+
+            Label l2 = new Label();
+            l2.Text = "GCode 指令（可多行；占位符 {safez} {writez} {xyfeed} {zfeed}）";
+            l2.Left = 14; l2.Top = 68; l2.Width = 390;
+            l2.ForeColor = Theme.Text; f.Controls.Add(l2);
+
+            TextBox t2 = new TextBox();
+            t2.Text = b.Command; t2.Left = 14; t2.Top = 90; t2.Width = 390; t2.Height = 90;
+            t2.Multiline = true; t2.ScrollBars = ScrollBars.Vertical;
+            t2.Font = Theme.Mono(9f, FontStyle.Regular);
+            f.Controls.Add(t2);
+
+            Button ok = new Button();
+            ok.Text = "确定"; ok.DialogResult = DialogResult.OK;
+            ok.Left = 232; ok.Top = 190; ok.Width = 80; ok.Height = 30;
+            Theme.StyleButton(ok, Color.White, Theme.Text, Theme.Border);
+            f.Controls.Add(ok);
+
+            Button cancel = new Button();
+            cancel.Text = "取消"; cancel.DialogResult = DialogResult.Cancel;
+            cancel.Left = 324; cancel.Top = 190; cancel.Width = 80; cancel.Height = 30;
+            Theme.StyleButton(cancel, Color.White, Theme.Text, Theme.Border);
+            f.Controls.Add(cancel);
+
+            f.AcceptButton = ok; f.CancelButton = cancel;
+            if (f.ShowDialog(this) != DialogResult.OK) return;
+
+            b.Label = t1.Text.Trim();
+            b.Command = t2.Text.Trim();
+            SaveMacros();
+            RefreshMacroButtons();
+            Log("宏 " + (i + 1) + " 已更新：「" + b.Label + "」");
+        }
+
+        private void SaveMacros()
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(_macroPath));
+                File.WriteAllText(_macroPath, _macros.ToJson(), Utf8NoBom);
+            }
+            catch (Exception ex) { Log("保存宏失败: " + ex.Message); }
+        }
+
+        private void LoadMacros()
+        {
+            try
+            {
+                if (!File.Exists(_macroPath)) { _macros = MacroSet.Defaults(); return; }
+                _macros = MacroSet.FromJson(File.ReadAllText(_macroPath, System.Text.Encoding.UTF8));
+            }
+            catch (Exception ex)
+            {
+                _macros = MacroSet.Defaults();
+                Log("读取宏失败（已用默认值）: " + ex.Message);
+            }
+        }
+
+        // ---------- 高度图 / 接触式探测（A1 / A5） ----------
+
+        private bool ProbePreflight()
+        {
+            if (!_grbl.IsOpen)
+            {
+                MessageBox.Show("串口未连接。探测需要真机配合：探针接 GRBL 的探针/ Z 限位输入。",
+                                "未连接", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+            if (_stream.IsRunning)
+            {
+                Log("书写进行中，不能开始探测");
+                return false;
+            }
+            if (_probe.Running)
+            {
+                Log("已有探测在进行，请先停止");
+                return false;
+            }
+            if (_grbl.Status.State == GrblState.Alarm)
+            {
+                Log("控制器处于 ALARM，先发 $X 解锁");
+                _grbl.SendCommand("$X");
+            }
+            if (_heightMap.PressDepthMm <= 0) _heightMap.PressDepthMm = (double)_pressDepth.Value;
+            return true;
+        }
+
+        private void StartGridProbe()
+        {
+            if (!ProbePreflight()) return;
+
+            ApplyUiToConfig();
+            double margin = _cfg.ProbeMarginMm;
+            double w = _cfg.PaperWidthMm, h = _cfg.PaperHeightMm;
+            if (margin * 2 >= Math.Min(w, h)) margin = Math.Min(w, h) * 0.1;
+
+            int cols = (int)_probeCols.Value, rows = (int)_probeRows.Value;
+            List<ProbePoint> pts = ProbePlanner.BuildPoints(margin, margin, w - margin, h - margin, cols, rows);
+
+            _heightMap = new HeightMap();
+            _heightMap.Reset(cols, rows);
+            _heightMap.MinX = margin; _heightMap.MinY = margin;
+            _heightMap.MaxX = w - margin; _heightMap.MaxY = h - margin;
+            _heightMap.PressDepthMm = (double)_pressDepth.Value;
+
+            List<ProbeStep> steps = ProbePlanner.BuildSteps(_cfg, pts, _cfg.ProbeTravelMm);
+            BeginProbe(steps, "网格探测 " + cols + "×" + rows,
+                "每个点 G38.2 下探 " + GCodeBuilder.F(_cfg.ProbeTravelMm)
+                + " mm，进给 " + GCodeBuilder.F(_cfg.ProbeFeedMmPerMin) + " mm/min", false);
+        }
+
+        private void StartSingleProbe()
+        {
+            if (!ProbePreflight()) return;
+
+            // 单点对刀就地探测：不移动 XY，避免把笔拖到别处
+            double x = _grbl.Status.WX, y = _grbl.Status.WY;
+            List<string> lines = ProbePlanner.BuildSinglePoint(_cfg, x, y, _cfg.ProbeTravelMm);
+
+            ProbePoint p = new ProbePoint();
+            p.Col = 0; p.Row = 0; p.X = x; p.Y = y;
+            ProbeStep s = new ProbeStep();
+            s.Point = p;
+            s.Lines = lines;
+
+            List<ProbeStep> steps = new List<ProbeStep>();
+            steps.Add(s);
+            BeginProbe(steps, "单点对刀（当前位置）",
+                "探到纸面后会把书写 Z 设为「接触 Z + 压入 "
+                + GCodeBuilder.F((double)_pressDepth.Value) + " mm」", true);
+        }
+
+        private void BeginProbe(List<ProbeStep> steps, string title, string hint, bool single)
+        {
+            _singleProbe = single;
+            _probePointCache = new List<ProbePoint>();
+            foreach (ProbeStep st in steps) _probePointCache.Add(st.Point);
+
+            _probeDlg = new ProbeDialog(title, hint);
+            _probe.OnStepStarted = delegate(ProbeStep s)
+            {
+                if (_probeDlg == null) return;
+                _probeDlg.SetProgress(_probe.Current, _probe.Total,
+                    "点 (" + s.Point.Col + "," + s.Point.Row + ")  X "
+                    + GCodeBuilder.F(s.Point.X) + "  Y " + GCodeBuilder.F(s.Point.Y));
+            };
+            _probe.OnResult = delegate(ProbePoint p, bool ok, double z)
+            {
+                if (_probeDlg == null) return;
+                _probeDlg.AddLog("(" + p.Col + "," + p.Row + ") "
+                    + (ok ? "Z=" + GCodeBuilder.F(z) : "未接触/失败"));
+            };
+            _probe.OnFinished = delegate(int okCount, int total) { FinishProbe(okCount, total); };
+            _probe.Send = delegate(string line) { _grbl.SendCommand(line); };
+
+            _probeWatch.Start();
+            _probeDlg.Show(this);
+            _probe.Start(steps);
+        }
+
+        private void FinishProbe(int okCount, int total)
+        {
+            _probeWatch.Stop();
+
+            if (_probe.Cancelled || total == 0)
+            {
+                if (_probeDlg != null) _probeDlg.Finish("已中止，未写入高度图", false);
+                _probeDlg = null;
+                Log("探测已中止");
+                return;
+            }
+
+            // 单点：直接把接触 Z 折算成书写 Z（弹簧笔架靠压入量保证接触）
+            if (_singleProbe)
+            {
+                ProbePoint p = _probePointOfLastRun();
+                if (p != null && p.Ok)
+                {
+                    double writeZ = p.Z + (double)_pressDepth.Value;
+                    _writeZ.Value = (decimal)Clamp(writeZ, -50, 100);
+                    ApplyUiToConfig();
+                    Generate();
+                    Log("单点对刀：接触 Z=" + GCodeBuilder.F(p.Z) + "，压入 "
+                        + GCodeBuilder.F((double)_pressDepth.Value) + " mm → 书写 Z="
+                        + GCodeBuilder.F(writeZ));
+                    if (_probeDlg != null)
+                        _probeDlg.Finish("书写 Z 已设为 " + GCodeBuilder.F(writeZ) + " mm", true);
+                }
+                else
+                {
+                    Log("单点对刀未接触到纸面。检查探针接线 / 下探行程（当前 "
+                        + GCodeBuilder.F(_cfg.ProbeTravelMm) + " mm）");
+                    if (_probeDlg != null) _probeDlg.Finish("未接触到纸面，Z 未修改", false);
+                }
+                _probeDlg = null;
+                return;
+            }
+
+            HeightMap map = new HeightMap();
+            int cols = 2, rows = 2;
+            foreach (ProbePoint p in _probePointCache)
+            {
+                if (p.Col + 1 > cols) cols = p.Col + 1;
+                if (p.Row + 1 > rows) rows = p.Row + 1;
+            }
+            map.Reset(cols, rows);
+            map.MinX = _heightMap.MinX; map.MinY = _heightMap.MinY;
+            map.MaxX = _heightMap.MaxX; map.MaxY = _heightMap.MaxY;
+            map.PressDepthMm = (double)_pressDepth.Value;
+
+            ProbePlanner.ApplyResults(map, _lastProbePoints());
+            if (map.Valid) map.Smooth();
+            map.Enabled = true;
+            map.ProbedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            _heightMap = map;
+
+            _heat.SetMap(_heightMap);
+            _useHeightMap.Checked = _heightMap.Valid;
+            ApplyUiToConfig();
+            UpdateHeightLabel();
+            SaveHeightMapFile();
+            Generate();
+
+            string msg = _heightMap.Valid
+                ? _heightMap.Summary() + (_heightMap.FailCount > 0 ? "（失败点已用邻点补）" : "")
+                : "全部点都未接触到纸面，高度图无效";
+            Log("网格探测完成：" + msg);
+            if (_probeDlg != null) _probeDlg.Finish(msg, _heightMap.Valid);
+            _probeDlg = null;
+        }
+
+        private List<ProbePoint> _probePointCache = new List<ProbePoint>();
+
+        private List<ProbePoint> _lastProbePoints() { return _probePointCache; }
+
+        private ProbePoint _probePointOfLastRun()
+        {
+            return _probePointCache.Count > 0 ? _probePointCache[0] : null;
+        }
+
+        private void SaveHeightMapFile()
+        {
+            try
+            {
+                ApplyUiToConfig();
+                Directory.CreateDirectory(Path.GetDirectoryName(_hmPath));
+                File.WriteAllText(_hmPath, _heightMap.ToJson(), Utf8NoBom);
+            }
+            catch (Exception ex) { Log("保存高度图失败: " + ex.Message); }
+        }
+
+        private void LoadHeightMapFile(bool showMsg)
+        {
+            try
+            {
+                if (!File.Exists(_hmPath))
+                {
+                    if (showMsg) Log("没有已保存的高度图: " + _hmPath);
+                    return;
+                }
+                _heightMap = HeightMap.FromJson(File.ReadAllText(_hmPath, System.Text.Encoding.UTF8));
+                if (_heat != null) _heat.SetMap(_heightMap);
+                if (showMsg) Log("高度图已读取：" + _heightMap.Summary());
+            }
+            catch (Exception ex) { Log("读取高度图失败: " + ex.Message); }
+        }
+
         /// <summary>统计实际排上纸的字数（缺字不计），用于「无内容可写」判定与状态栏显示。</summary>
         public static int CountPlacedChars(Job j)
         {
@@ -610,7 +1225,17 @@ namespace InkPen.UI
             foreach (string l in arr) if (l.Trim().Length > 0) lines.Add(l.Trim());
             _sendStart = DateTime.Now;
             _stream.AckTimeoutMs = _cfg.AckTimeoutMs;
-            _progressLbl.ForeColor = SystemColors.ControlText;
+            _bar.Error = false;
+            _bar.StateText = "开始书写";
+            _bar.SubText = lines.Count + " 行待发送";
+            _bar.Progress = 0;
+            _bar.Total = lines.Count;
+            _bar.Invalidate();
+            // 真机模式从第一行重新计数，否则上一次的「已完成笔画」会残留
+            _pen.SetJob(_job);
+            _pen.SetSentLines(fromLine);
+            _canvas.Realtime = true;
+            _canvas.RealtimePath = -1;
             _stream.Start(lines, 0);
             Log("开始书写：" + lines.Count + " 行，起始行 " + (fromLine + 1)
               + "，ack 超时 " + (_cfg.AckTimeoutMs / 1000) + " s");

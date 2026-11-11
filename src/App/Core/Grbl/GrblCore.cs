@@ -58,6 +58,8 @@ namespace InkPen.Core
         public Action<string> OnStreamFault;
         /// <summary>$n=v 参数行解析完成（用于刷新 $ 参数表）。</summary>
         public Action OnSettingsChanged;
+        /// <summary>每一行原始回报（含 [PRB:]）。探测流程靠它拿 G38.2 的结果。</summary>
+        public Action<string> OnRawLine;
 
         public bool VerboseLog = true;   // 流控发送时关闭逐行日志，避免上万行刷屏
         public GrblStatus Status = new GrblStatus();
@@ -178,6 +180,11 @@ namespace InkPen.Core
             {
                 string line = raw.Replace("\r", "").Trim();
                 if (line.Length == 0) continue;
+                if (OnRawLine != null)
+                {
+                    try { OnRawLine(line); }
+                    catch { }   // 订阅方异常不能拖垮串口线程
+                }
                 if (VerboseLog && !line.StartsWith("<") && line != "ok") Log("RX " + line);
                 if (line.StartsWith("<"))
                 {

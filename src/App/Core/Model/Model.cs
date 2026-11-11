@@ -100,6 +100,16 @@ namespace InkPen.Core
         public int BaudRate = 115200;
         public bool AutoDetect = true;
         public int AckTimeoutMs = 30000;    // 等待 GRBL ok 的超时；0 禁用
+        public bool AutoReconnect = true;   // 掉线后按退避自动重连（A3）
+
+        // 高度图 / 接触式探测（A1 / A5）
+        public bool UseHeightMap = false;   // 逐点 Z 补偿开关（数据在 config\heightmap.json）
+        public double ProbeTravelMm = 8.0;  // 单次下探最大行程
+        public double ProbeFeedMmPerMin = 100.0;
+        public int ProbeCols = 3;
+        public int ProbeRows = 3;
+        public double ProbeMarginMm = 10.0; // 探测区域相对纸边内缩
+        public double PressDepthMm = 0.3;   // 弹簧笔架压入量：接触后再压这么多
 
         // 手写感（0..1 或具体量纲）
         public int Seed = 20261110;
@@ -146,5 +156,7 @@ namespace InkPen.Core
         public MachineConfig Machine = new MachineConfig();
         public List<string> MissingChars = new List<string>();
         public int ResumeCharIndex = 0;
+        /// <summary>纸面高度补偿表。为空或未启用时 GCode 与不带补偿时完全一致。</summary>
+        public HeightMap HeightMap = new HeightMap();
     }
 }

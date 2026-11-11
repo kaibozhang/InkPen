@@ -14,4 +14,7 @@ D:\Writer\InkPen\src\App\Core\SimpleJson.cs
 D:\Writer\InkPen\src\App\Core\Glyph\GlyphRepository.cs
 D:\Writer\InkPen\src\App\Core\Layout\LayoutEngine.cs
 D:\Writer\InkPen\src\App\Core\GCode\GCodeBuilder.cs
+D:\Writer\InkPen\src\App\Core\Machine\HeightMap.cs
+D:\Writer\InkPen\src\App\Core\Machine\ProbePlanner.cs
+D:\Writer\InkPen\src\App\Core\Machine\Macros.cs
 D:\Writer\InkPen\tools\selftest\SelfTest.cs
