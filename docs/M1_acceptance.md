@@ -21,7 +21,7 @@
 | 6 | 分发构建 | `INKPEN_DISTRIBUTE=1 build.bat` | **PASS**，`local.zip` 与 `local_report.json` 被排除 |
 | 7 | 文档同步 | `cmp` 比对 `NOTICE.md` / `README.md` / `LICENSES/ACKNOWLEDGEMENT.txt` 与 `dist/` | **PASS**，三份一致 |
 | 8 | VS 编译链 | `InkPen.sln` + MSBuild 17.14 + vstest 17.14（VS 2022 Build Tools） | **PASS**，编译零错误、`Rebuild` 成功，产物与 csc 链一致 |
-| 9 | 单元测试 | `INKPEN_CI=1 cmd /c build\test.bat` | **PASS**，**95 / 95**，0 失败 0 跳过 |
+| 9 | 单元测试 | `INKPEN_CI=1 cmd /c build\test.bat` | **PASS**，**98 / 98**，0 失败 0 跳过 |
 | 10 | 字库方向 | `GlyphOrientationTests`（垂直重心相关性 + 「三」横长 + 「P」圆环位置） | **PASS**，`local` 与 `mmah` 相关系数 **+0.711**；回归验证时换回倒置版会失败于 **-0.732** |
 | 10 | GUI 冒烟 | Win32 `EnumWindows`/`EnumChildWindows` + `PIL.ImageGrab` 像素统计 | **PASS**，标题正确、1400×880、98 个子窗口、无错误框、画布墨迹比 0.0070、纸张左右留白 98/97 px（居中未裁切） |
 | 11 | GUI 交互 | Win32 `SendMessageW(BM_CLICK)` 点「把格线写入 GCode」+「生成 GCode」 | **PASS**，笔画 130→137、GCode 2902→2920 行 |
@@ -101,7 +101,12 @@
 
 **测试有效性验证**：把倒置的旧 `local.zip` 换回去重跑，新测试立即失败并打出
 `相关系数 = -0.732`，同时提示「检查 tools/import_gfont.py 的坐标变换」。
-换回修复版后 95/95 通过——证明这条测试不是摆设。
+换回修复版后全通过（当时是 95 项）——证明这条测试不是摆设。
+
+**X 方向补测（复盘后新增）**：原先只守 Y 方向，X 完全无人检查。已补 3 项判据，
+并同样做了注入验证：把 `latin.zip` / `local.zip` 就地左右镜像后重跑，
+3 项 X 判据全部失败（`相关系数 = -0.432`，恰为 `+0.432` 的镜像）、Y 判据零误报。
+完整复盘见 `docs/testing_pitfalls.md`。
 
 **顺带核验的另外两套字库**：`mmah.zip`（「三」上 406 / 中 369 / 下 828，上短下长，正立）、
 `latin.zip`（P 圆环 0.74，正立）、`fallback.zip`（与 `mmah` 零交集、并集 21016 字，
@@ -141,7 +146,7 @@
 
 ```bat
 cd D:\Writer\InkPen\build
-INKPEN_CI=1 cmd /c test.bat        :: MSBuild 编译 + 95 个单元测试
+INKPEN_CI=1 cmd /c test.bat        :: MSBuild 编译 + 98 个单元测试
 INKPEN_CI=1 cmd /c build.bat       :: csc 链，产出 dist\InkPen.exe
 INKPEN_CI=1 cmd /c selftest.bat    :: 9 作业 / 66 断言 / 10 份 .nc
 ```

@@ -16,7 +16,7 @@
 
 1. 编译：双击 `build\build.bat`（零安装：用 .NET Framework 4.8 自带 `csc.exe`，无 NuGet、无外部 DLL）。
    若会话安全策略拦截 `csc.exe`，直接双击该 bat 即可。
-2. 自测：双击 `build\test.bat`（MSBuild 编译 + 95 个单元测试）→ `build\selftest.bat`（端到端）。两条链产物一致。
+2. 自测：双击 `build\test.bat`（MSBuild 编译 + 98 个单元测试）→ `build\selftest.bat`（端到端）。两条链产物一致。
 3. 运行：`dist\InkPen.exe`（xcopy 绿色版，不写注册表、不联网、不需登录）。
 4. 左栏输入文稿 → 点「生成 GCode / 预览」→ 中栏查看仿真（多页稿可用中栏上的「‹ / ›」翻页）。
 5. 中栏「▶ 播放」逐笔回放，确认字形、笔画顺序、格线、抬笔空程。
@@ -42,7 +42,7 @@
 ```
 src/App/              主程序源码（C# 5 / WinForms / 零外部 DLL）
 src/Upstream/         GRBL-Plotter 源码快照（只读参考，保留原版权头）
-tests/InkPen.Tests/   MSTest v2 单元测试（95 个，引用主程序工程，复用生产代码）
+tests/InkPen.Tests/   MSTest v2 单元测试（98 个，引用主程序工程，复用生产代码）
 data/glyphs/          字库 ZIP（InkPen Glyph v1）+ schema.json
 data/glyphs/dev/      开发态每字 JSON（可 diff / 手绘补录）
 tools/                Python 3.12 离线字库与校验脚本（不随 exe 分发）
@@ -54,7 +54,7 @@ dist/selftest/        自检生成的 .nc 样例（可离线复验）
 InkPen.sln            VS 解决方案（主程序 + 测试工程）
 LICENSES/             第三方许可证原文
 NOTICE.md             SBOM、衍生关系、Arphic 三层口径、格式命名契约
-docs/                 字库报告、M1 验收记录、界面截图
+docs/                 字库报告、M1 验收记录、界面截图、测试盲区复盘、与上游功能差异清单
 ```
 
 ## 编译链
@@ -62,7 +62,7 @@ docs/                 字库报告、M1 验收记录、界面截图
 | 链 | 用途 |
 |---|---|
 | `csc.exe` 直编 + `build.bat` | **日常主链**，零依赖、零 NuGet；命令文本不含被会话拦截的关键字，产物与 MSBuild 链一致 |
-| MSBuild + `test.bat` | **测试主链**：`InkPen.sln` → `src/App/InkPen.csproj` + `tests/InkPen.Tests/InkPen.Tests.csproj`，跑 95 个 MSTest 用例。工具链为 VS 2022 Build Tools 17.14（`C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`，含 .NET Framework 4.8 Targeting Pack、NuGet、vstest.console） |
+| MSBuild + `test.bat` | **测试主链**：`InkPen.sln` → `src/App/InkPen.csproj` + `tests/InkPen.Tests/InkPen.Tests.csproj`，跑 98 个 MSTest 用例。工具链为 VS 2022 Build Tools 17.14（`C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`，含 .NET Framework 4.8 Targeting Pack、NuGet、vstest.console） |
 | Python 3.12.10 | 仅离线字库生成/转换/校验；所有脚本用绝对路径 `...\Python312\python.exe`，避免与 Git Bash 的 3.13 混淆 |
 
 > 两条 C# 链共享 `build/pack.bat` 打包步骤，`dist/` 内容一致；改代码后建议 `test.bat`（含单元测试）再 `build.bat`。
@@ -108,7 +108,7 @@ cd /d D:\Writer\InkPen\build
 INKPEN_CI=1 cmd /c test.bat
 ```
 
-`test.bat` = NuGet 还原 → 编译 `InkPen.sln` → 打包 → 跑 `vstest.console`。当前 **95 个用例全通过**，覆盖：
+`test.bat` = NuGet 还原 → 编译 `InkPen.sln` → 打包 → 跑 `vstest.console`。当前 **98 个用例全通过**，覆盖：
 
 | 测试文件 | 用例 | 覆盖点 |
 |---|---|---|
@@ -118,7 +118,7 @@ INKPEN_CI=1 cmd /c test.bat
 | `GCodeTests` | 10 | 抬头/结尾、`G1 Z0`/`G0 Z5`/`G4`、续写元数据注释、原点角翻转、格线开关、字节级确定性、续写前缀、越界返回末尾 |
 | `ValidatorTests` | 10 | 空程序、缺 Z、>80 字节、XY 越界、容差内负坐标、SafeZ 告警、非正进给、幂等清空 |
 | `GlyphRepositoryTests` | 9 | 码点命名、二进制解码、缓存同实例、启用/禁用、重复 Load 不叠加、**真实字库 2 万+ 码点存在性** |
-| `GlyphOrientationTests` | 3 | **字库垂直方向契约**：`local` 与 `mmah` 垂直重心相关系数须为正（整包镜像会变负）、「三」上横短于下横、「P」圆环在上 |
+| `GlyphOrientationTests` | 6 | **字库方向契约（X 与 Y 双向）**：`local`/`mmah` 垂直与水平重心相关系数须为正（整包镜像会变负）、「三」上横短于下横、「P」圆环在上、「L」顶部竖笔贴左缘、「F」左半点数占优 |
 | `GrblProtocolTests` | 7 | 九种状态解析、WPos、垃圾输入、`$` 参数、端口枚举、未连接安全拒绝 |
 | `StreamControllerTests` | 4 | 超单行缓冲中止、ack 超时中止不挂死、跳过注释空行、`Stop()` 终止线程 |
 | `LifecycleTests` | 9 | 停后重启只认新作业、15 次抖动不错乱、暂停仍算运行中、空作业、越界起始行夹取、画布页数/翻页夹取、路径页号不串页 |
@@ -156,7 +156,7 @@ cmd /c tools\gui_check\gui_check.bat all
 仓库**不包含** `data/glyphs/local.zip`（专有字库，见 `.gitignore` 与 `NOTICE.md` §4）。克隆后：
 
 - 程序照常启动，回退链自动跳过 `local`，用 `mmah` / `pinyin` / `latin` / `fallback` 出稿；
-- `GlyphOrientationTests` 会自动**跳过**那一项方向比对（显示为 skipped，不是失败），其余 94 项照跑；
+- `GlyphOrientationTests` 会自动**跳过**与 `local.zip` 相关的两项方向比对（显示为 skipped，不是失败），其余 96 项照跑；
 - 想在克隆的机器上用自己的手写风格，把该机器的 `.gfont` 放好后跑 `python tools/import_gfont.py` 自行生成；
 - 缺少的上游字库原料（`tools/_src/`、两份 `.tar.gz`）同样不入库，`python tools/build_glyph_db.py` 会提示下载地址。
 
