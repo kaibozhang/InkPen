@@ -13,8 +13,12 @@ set "OUT=%ROOT%\dist"
 if not exist "%OUT%" mkdir "%OUT%"
 
 echo [1/2] Compiling InkPen.SelfTest.exe ...
+REM same as build.bat: rsp paths are relative, so compile from the project root
+pushd "%ROOT%"
 "%CSC%" @"%ROOT%\build\selftest.rsp"
-if errorlevel 1 (
+set "RC=%errorlevel%"
+popd
+if not "%RC%"=="0" (
   echo [ERROR] Compile failed.
   if not "%INKPEN_CI%"=="1" pause
   exit /b 1

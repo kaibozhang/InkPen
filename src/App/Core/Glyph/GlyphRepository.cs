@@ -59,6 +59,9 @@ namespace InkPen.Core
         public void Load(string dir, bool preferLocal, string latinFont)
         {
             Dispose();
+            // 每次 Load 都要清空：切换字库 / 改配置都会重新 Load，
+            // 不清就会把同一批错误反复累加，缺字上报里出现 N 条一模一样的记录。
+            LoadErrors.Clear();
             List<string> order = new List<string>();
             if (preferLocal) order.Add("local.zip");
             order.Add("mmah.zip");
@@ -105,7 +108,21 @@ namespace InkPen.Core
 
         public StrokeGlyph Get(char ch, out string source)
         {
-            int cp = (int)ch;
+            return Load((int)ch, ch, out source);
+        }
+
+        /// <summary>
+        /// 按 Unicode 码点取字形。char 装不下非 BMP 字符（emoji、扩展区汉字），
+        /// 排版时须先把代理对合并成码点再传进来，否则永远取不到（字库里就算收了也不行）。
+        /// </summary>
+        public StrokeGlyph Get(int codePoint, out string source)
+        {
+            char ch = (codePoint >= 0 && codePoint <= 0xFFFF) ? (char)codePoint : '\0';
+            return Load(codePoint, ch, out source);
+        }
+
+        private StrokeGlyph Load(int cp, char ch, out string source)
+        {
             foreach (FontPack p in _packs)
             {
                 if (!p.Enabled || !p.Index.ContainsKey(cp)) continue;

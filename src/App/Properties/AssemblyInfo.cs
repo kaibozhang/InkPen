@@ -8,5 +8,5 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCopyright("GPL-3.0; 部分算法衍生自 GRBL-Plotter (C) Sven Hasemann")]
 [assembly: ComVisible(false)]
 [assembly: Guid("a6d1f8c2-3e57-4b0a-9c41-7f2e5b8d1a90")]
-[assembly: AssemblyVersion("0.1.0.0")]
-[assembly: AssemblyFileVersion("0.1.0.0")]
+[assembly: AssemblyVersion("0.1.1.0")]
+[assembly: AssemblyFileVersion("0.1.1.0")]

@@ -116,27 +116,26 @@ namespace InkPen.Core
         /// <summary>3×3 均值平滑，去掉单点探测毛刺（探针抖动、纸面小颗粒）。</summary>
         public void Smooth()
         {
-            if (Z == null || Cols < 2 || Rows < 2) return;
+            if (Z == null || Cols < 3 || Rows < 3) return;
+            // 只平滑**内部**点：边界点的邻域在纸外，取平均等于拿半边数据外推。
+            // 更关键的是「网格只有 2 行/2 列」时（探测页的行列下限就是 2），
+            // 3×3 均值会把每个点都变成全图平均 —— 单向倾斜被彻底抹平，
+            // 起伏显示 0.000 mm，用户以为纸是平的，于是整幅笔压都是错的。
+            // 小网格没有任何冗余可供平滑，直接跳过。
             double[] src = (double[])Z.Clone();
-            for (int r = 0; r < Rows; r++)
+            for (int r = 1; r < Rows - 1; r++)
             {
-                for (int c = 0; c < Cols; c++)
+                for (int c = 1; c < Cols - 1; c++)
                 {
                     double sum = 0;
-                    int n = 0;
                     for (int dr = -1; dr <= 1; dr++)
-                    {
                         for (int dc = -1; dc <= 1; dc++)
-                        {
-                            int rr = r + dr, cc = c + dc;
-                            if (rr < 0 || rr >= Rows || cc < 0 || cc >= Cols) continue;
-                            sum += src[rr * Cols + cc];
-                            n++;
-                        }
-                    }
-                    Z[r * Cols + c] = n > 0 ? sum / n : src[r * Cols + c];
+                            sum += src[(r + dr) * Cols + (c + dc)];
+                    Z[r * Cols + c] = sum / 9.0;
                 }
             }
+            // 线性倾斜场在内部取 3×3 均值后不变（等于中心值），边界又保持原值，
+            // 所以倾斜与真实起伏都留得住，只把孤立的单点毛刺削掉。
         }
 
         public double MinZ()

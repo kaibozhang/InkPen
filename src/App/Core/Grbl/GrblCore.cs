@@ -20,9 +20,19 @@ namespace InkPen.Core
         public GrblState State = GrblState.Unknown;
         public double WX, WY, WZ;
         public double MX, MY, MZ;
+        /// <summary>报文里真的带了 WPos 段。没带时 WX 只是 0，不能当有效坐标用。</summary>
+        public bool HasWPos;
+        /// <summary>报文里真的带了 MPos 段。</summary>
+        public bool HasMPos;
+        /// <summary>已知工件坐标偏移（WCO）。有它才能把 MPos 换算成工件坐标。</summary>
+        public bool SawWco;
+        public double Wcx, Wcy, Wcz;
         public int FeedOverride = 100;
         public int BufferFree = 127;
         public string Raw = "";
+
+        /// <summary>坐标能不能用。实时笔位置、单点对刀都以它为准，避免拿默认 0 当真实位置。</summary>
+        public bool HasPosition { get { return HasWPos || (HasMPos && SawWco); } }
     }
 
     public class GrblSettings
@@ -111,6 +121,7 @@ namespace InkPen.Core
                 Thread.Sleep(200);
                 SendRealtime(0x18); // soft-reset，等待欢迎信息
                 Status.State = GrblState.Unknown;
+                StartStatusPolling();
                 if (OnConnectionChanged != null) OnConnectionChanged(true);
                 Log("已连接 " + port + " @ " + baud);
                 return true;
@@ -238,10 +249,35 @@ namespace InkPen.Core
                 string seg = f[i];
                 if (seg.StartsWith("MPos:")) ParsePos(seg.Substring(5), true, s);
                 else if (seg.StartsWith("WPos:")) ParsePos(seg.Substring(5), false, s);
+                else if (seg.StartsWith("WCO:"))
+                {
+                    // 工件坐标偏移。$10 状态掩码不显示 WPos 的固件只给 MPos+WCO，
+                    // 不解析它就只能把机械坐标当工件坐标用，设过零点后整体偏一个量。
+                    double[] w = ParseTriple(seg.Substring(4));
+                    if (w != null) { s.Wcx = w[0]; s.Wcy = w[1]; s.Wcz = w[2]; s.SawWco = true; }
+                }
                 else if (seg.StartsWith("Ov:")) { string[] o = seg.Substring(3).Split(','); if (o.Length > 0) int.TryParse(o[0], out s.FeedOverride); }
                 else if (seg.StartsWith("Bf:")) { string[] b = seg.Substring(3).Split(','); int v; if (b.Length > 0 && int.TryParse(b[0], out v)) s.BufferFree = v; }
             }
+            // 没有 WPos 段但有 MPos + WCO：自己换算 W = M - WCO
+            if (!s.HasWPos && s.HasMPos && s.SawWco)
+            {
+                s.WX = s.MX - s.Wcx;
+                s.WY = s.MY - s.Wcy;
+                s.WZ = s.MZ - s.Wcz;
+            }
             return s;
+        }
+
+        private static double[] ParseTriple(string v)
+        {
+            string[] p = v.Split(',');
+            if (p.Length < 3) return null;
+            double[] r = new double[3];
+            for (int i = 0; i < 3; i++)
+                if (!double.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out r[i]))
+                    return null;
+            return r;
         }
 
         private static void ParsePos(string csv, bool machine, GrblStatus s)
@@ -249,7 +285,7 @@ namespace InkPen.Core
             string[] p = csv.Split(',');
             double x, y, z;
             if (p.Length > 0 && double.TryParse(p[0], NumberStyles.Float, CultureInfo.InvariantCulture, out x))
-            { if (machine) s.MX = x; else s.WX = x; }
+            { if (machine) { s.MX = x; s.HasMPos = true; } else { s.WX = x; s.HasWPos = true; } }
             if (p.Length > 1 && double.TryParse(p[1], NumberStyles.Float, CultureInfo.InvariantCulture, out y))
             { if (machine) s.MY = y; else s.WY = y; }
             if (p.Length > 2 && double.TryParse(p[2], NumberStyles.Float, CultureInfo.InvariantCulture, out z))
@@ -282,8 +318,43 @@ namespace InkPen.Core
         public void SendRealtime(int b)
         {
             if (!IsOpen) return;
-            try { _port.Write(new byte[] { (byte)b }, 0, 1); }
+            try
+            {
+                SerialPort p = _port;
+                if (p == null) return;
+                lock (_lock) p.Write(new byte[] { (byte)b }, 0, 1);
+            }
             catch { }
+        }
+
+        /// <summary>
+        /// 状态轮询间隔（毫秒）。0 表示关闭轮询。
+        ///
+        /// GRBL 1.1 **不会主动推送** &lt;...&gt; 状态报文，只在收到实时字符 '?'(0x3F) 时回一次。
+        /// 之前全项目没有任何地方发过 0x3F，于是 DRO 恒为默认值 0、`Bf/Ov` 永不刷新、
+        /// 画布上的实时笔位置永不出现——而这恰恰是最难察觉的一类缺陷：解析代码全对，
+        /// 单元测试全绿，只是那条管线从来没被启动过。默认 250 ms（GRBL 建议不超过 10 Hz）。
+        /// </summary>
+        public int StatusPollMs = 250;
+        private Thread _pollThread;
+
+        /// <summary>立刻查询一次状态（'?' 实时字符，不占行缓冲、不回 ok，因此不影响流控计数）。</summary>
+        public void QueryStatus() { SendRealtime(0x3F); }
+
+        private void StartStatusPolling()
+        {
+            if (StatusPollMs <= 0) return;
+            if (_pollThread != null && _pollThread.IsAlive) return;
+            _pollThread = new Thread(delegate()
+            {
+                while (IsOpen)
+                {
+                    QueryStatus();
+                    for (int i = 0; i < 10 && IsOpen; i++) Thread.Sleep(Math.Max(10, StatusPollMs / 10));
+                }
+            });
+            _pollThread.IsBackground = true;
+            try { _pollThread.Start(); } catch { _pollThread = null; }
         }
 
         public event Action OnOk;
@@ -383,6 +454,8 @@ namespace InkPen.Core
         /// 否则「停止后马上重新开始」时，旧线程会因为 _stop 被复位而继续发上一份 GCode。
         /// </summary>
         private int _generation = 0;
+        /// <summary>已经向 GRBL 发过 feed hold（0x21）且尚未恢复。Stop 时据此决定要不要 soft reset。</summary>
+        private bool _holdSent = false;
 
         public StreamController(GrblClient client)
         {
@@ -455,6 +528,7 @@ namespace InkPen.Core
                 LastError = "";
                 FailedLineNumber = -1;
                 FailedLine = "";
+                _holdSent = false;   // 新作业从干净状态开始
             }
             Sent = _startLine;
             int gen = ++_generation;
@@ -479,6 +553,7 @@ namespace InkPen.Core
                     {
                         IsPaused = true;
                         _client.SendRealtime(0x21); // feed hold
+                        _holdSent = true;
                         Progress(total, "pause");
                     }
                     // 暂停时 GRBL 不回 ok，不能计为 ack 超时
@@ -573,6 +648,7 @@ namespace InkPen.Core
             _pauseReq = false;
             IsPaused = false;
             _client.SendRealtime(0x7E); // cycle start
+            _holdSent = false;
             Progress(_lines.Count, "resume");
         }
 
@@ -599,6 +675,20 @@ namespace InkPen.Core
             }
             _worker = null;
             IsPaused = false;
+
+            // 关键：如果之前在「暂停」时发过 feed hold，GRBL 此刻停在 Hold 状态。
+            // 只停本地线程不管机器，下一次「开始书写」就会把整份 GCode 灌进一台不动的机器：
+            // 缓冲很快被填满、逐行等 ok 直到超时，用户看到的是「开始了但一个字也不写」。
+            // Hold 里的残余缓冲不能再执行（那会把已经停下的笔画继续画完），
+            // 所以用 soft reset 清干净；代价是位置丢失，必须重新设原点才能续写。
+            if (_holdSent)
+            {
+                _holdSent = false;
+                _client.SendRealtime(0x18);   // soft reset：清掉规划缓冲，退出 Hold
+                if (OnLog != null)
+                    OnLog("已中止：控制器曾处于暂停（Hold），已 soft reset 清除残余缓冲。"
+                        + "位置已不可信，继续书写前请重新设原点并重新对刀。");
+            }
         }
 
         public void EmergencyStop()

@@ -242,8 +242,8 @@ namespace InkPen.UI
             {
                 using (Font f = Theme.Font(11f, FontStyle.Regular))
                 using (Brush b = new SolidBrush(Color.FromArgb(130, 145, 165)))
+                using (StringFormat sf = new StringFormat())
                 {
-                    StringFormat sf = new StringFormat();
                     sf.Alignment = StringAlignment.Center;
                     g.DrawString("左侧输入文稿，点击「生成 GCode / 预览」", f, b,
                                  new RectangleF(0, ClientSize.Height / 2f - 20, ClientSize.Width, 24), sf);
@@ -355,12 +355,35 @@ namespace InkPen.UI
                        Theme.CanvasBgTop, Theme.CanvasBgBottom, 90f))
                 g.FillRectangle(b, r);
 
-            // 点阵：给深色底一点「工程台面」的质感，也让纸张边界更明确
-            using (SolidBrush dot = new SolidBrush(Theme.CanvasDot))
+            // 点阵：给深色底一点「工程台面」的质感，也让纸张边界更明确。
+            // 图案是静态的，用 26×26 的贴图 + TextureBrush 一次填满，别再每帧画上千个小方块。
+            TextureBrush dot = DotBrush();
+            if (dot != null) g.FillRectangle(dot, r);
+        }
+
+        // 静态点阵贴图（进程级复用；只在首次绘制时创建一次）
+        private static TextureBrush _dotBrush;
+
+        private static TextureBrush DotBrush()
+        {
+            if (_dotBrush != null) return _dotBrush;
+            try
             {
-                for (int y = 12; y < r.Height; y += 26)
-                    for (int x = 12; x < r.Width; x += 26)
-                        g.FillRectangle(dot, x, y, 1.6f, 1.6f);
+                Bitmap tile = new Bitmap(26, 26);
+                using (Graphics tg = Graphics.FromImage(tile))
+                {
+                    tg.Clear(Color.Transparent);
+                    tg.SmoothingMode = SmoothingMode.AntiAlias;
+                    using (SolidBrush b = new SolidBrush(Theme.CanvasDot))
+                        tg.FillRectangle(b, 12f, 12f, 1.6f, 1.6f);
+                }
+                TextureBrush tb = new TextureBrush(tile, WrapMode.Tile);
+                _dotBrush = tb;
+                return tb;
+            }
+            catch
+            {
+                return null;   // 贴图建不出来就不画点阵，背景已由渐变铺满
             }
         }
 
@@ -373,7 +396,8 @@ namespace InkPen.UI
                 using (SolidBrush sb = new SolidBrush(Color.FromArgb(a, 0, 0, 0)))
                     g.FillRectangle(sb, paper.X + i * 2.2f, paper.Y + i * 2.6f, paper.Width, paper.Height);
             }
-            g.FillRectangle(new SolidBrush(Theme.Paper), paper);
+            using (SolidBrush paperFill = new SolidBrush(Theme.Paper))
+                g.FillRectangle(paperFill, paper);
             using (Pen edge = new Pen(Color.FromArgb(60, 120, 132, 150), 1f))
                 g.DrawRectangle(edge, paper.X, paper.Y, paper.Width, paper.Height);
 

@@ -17,8 +17,13 @@ if not exist "%CSC%" (
 set "OUT=%ROOT%\dist"
 
 echo [1/3] Compiling InkPen.exe ...
+REM rsp now uses relative paths so the chain works from any folder.
+REM csc resolves them against the current directory, so pushd to ROOT first.
+pushd "%ROOT%"
 "%CSC%" @"%ROOT%\build\sources.rsp"
-if errorlevel 1 (
+set "RC=%errorlevel%"
+popd
+if not "%RC%"=="0" (
   echo [ERROR] Compile failed.
   if not "%INKPEN_CI%"=="1" pause
   exit /b 1

@@ -23,6 +23,9 @@ namespace InkPen.UI
         private readonly Timer _debounce = new Timer();
         private readonly Timer _settingsDebounce = new Timer();
         private DateTime _sendStart;
+        /// <summary>本次作业在整份 GCode 中的起始行。流控的 Sent 是「相对续写起点」的，
+        /// 笔跟踪与错误行号都要加上它才是绝对行号。</summary>
+        private int _sendBaseLine = 0;
         private bool _legacyJog = false;
         private bool _loading = false;
 
@@ -72,7 +75,13 @@ namespace InkPen.UI
 
             // 探测超时看门狗：ProbeRunner 只在被喂行时推进，没人喂就会一直挂着
             _probeWatch.Interval = 500;
-            _probeWatch.Tick += delegate(object s, EventArgs e) { _probe.Poll(DateTime.UtcNow); };
+            _probeWatch.Tick += delegate(object s, EventArgs e)
+            {
+                // 探测对话框上的「中止」按钮和右上角关闭，都只置 CancelRequested，
+                // 之前没人读它——点了跟没点一样。这里每 500 ms 检查一次，统一走 AbortProbe。
+                if (_probeDlg != null && _probeDlg.CancelRequested) { AbortProbe("对话框已取消"); return; }
+                _probe.Poll(DateTime.UtcNow);
+            };
 
             _reconnectTimer.Interval = 1000;
             _reconnectTimer.Tick += delegate(object s, EventArgs e) { TryReconnect(); };
@@ -210,9 +219,11 @@ namespace InkPen.UI
             _btnJogYm.Click += delegate { Jog("Y", -1); };
             _btnJogZp.Click += delegate { Jog("Z", 1); };
             _btnJogZm.Click += delegate { Jog("Z", -1); };
-            _btnHome.Click += delegate { _grbl.SendCommand("$H"); };
-            _btnUnlock.Click += delegate { _grbl.SendCommand("$X"); };
-            _btnZero.Click += delegate { _grbl.SendCommand("G10 L20 P1 X0 Y0 Z0"); };
+            // $H / $X / G10 都走守卫：书写中发这些，既会让笔在纸上乱跑（回零直接拖穿纸面），
+            // 也会让它们返回的 ok 被流控当成某条 GCode 行的 ack，导致计数提前释放、静默丢行。
+            _btnHome.Click += delegate { SendGuarded("$H", "回零"); };
+            _btnUnlock.Click += delegate { SendGuarded("$X", "解锁"); };
+            _btnZero.Click += delegate { SendGuarded("G10 L20 P1 X0 Y0 Z0", "设原点"); };
             _btnReset.Click += delegate { _grbl.SendRealtime(0x18); };
             _btnEStop.Click += delegate { _stream.EmergencyStop(); };
             _btnOv100.Click += delegate { _grbl.SendRealtime(0x90); };
@@ -268,7 +279,7 @@ namespace InkPen.UI
 
             // 探测 / 调平（A1 / A5）
             _btnProbeStart.Click += delegate { StartGridProbe(); };
-            _btnProbeStop.Click += delegate { _probe.Cancel(); _probeWatch.Stop(); };
+            _btnProbeStop.Click += delegate { AbortProbe("按钮停止"); };
             _btnProbeSingle.Click += delegate { StartSingleProbe(); };
             _btnProbeClear.Click += delegate
             {
@@ -322,7 +333,7 @@ namespace InkPen.UI
             };
 
             // $ 参数
-            _btnReadSettings.Click += delegate { _grbl.SendCommand("$$"); };
+            _btnReadSettings.Click += delegate { SendGuarded("$$", "读取参数"); };
             _settingsGrid.CellDoubleClick += delegate(object s, DataGridViewCellEventArgs e)
             {
                 if (e.RowIndex < 0) return;
@@ -332,7 +343,7 @@ namespace InkPen.UI
                 string input = val == null ? "" : val.ToString();
                 if (ShowInput("$" + id + " =", ref input) == DialogResult.OK)
                 {
-                    _grbl.SendCommand("$" + id + "=" + input.Replace(",", "."));
+                    SendGuarded("$" + id + "=" + input.Replace(",", "."), "写参数");
                     Log("写入 $" + id + "=" + input);
                 }
             };
@@ -386,7 +397,7 @@ namespace InkPen.UI
                 {
                     _bar.Progress = sent;
                     _bar.Total = total;
-                    _pen.SetSentLines(Math.Min(sent, _job == null ? 0 : _job.GCode.Count));
+                    _pen.SetSentLines(Math.Min(sent + _sendBaseLine, _job == null ? 0 : _job.GCode.Count));
                     if (_job != null) PushPenToCanvas(false);
 
                     double elapsed = (DateTime.Now - _sendStart).TotalSeconds;
@@ -396,7 +407,7 @@ namespace InkPen.UI
                         _bar.Error = true;
                         _bar.StateText = "作业已中止";
                         _bar.SubText = _stream.LastError
-                            + " · 可从 GCode 第 " + _stream.FailedLineNumber + " 行续写";
+                            + " · 可从 GCode 第 " + (_stream.FailedLineNumber + _sendBaseLine) + " 行续写";
                     }
                     else
                     {
@@ -440,16 +451,21 @@ namespace InkPen.UI
         /// <summary>GRBL 状态报文 → DRO、状态胶囊、画布笔尖。全部收敛到一处，避免各控件各读一份不一致。</summary>
         private void OnGrblStatus(GrblStatus st)
         {
-            _droLbl.Text = "X " + st.WX.ToString("F2") + "   Y " + st.WY.ToString("F2")
-                         + "   Z " + st.WZ.ToString("F2") + "\n" + st.State
-                         + " | MPos " + st.MX.ToString("F1") + "," + st.MY.ToString("F1")
+            // 没有有效坐标时必须显示「—」。之前无条件拿 WX/WY/WZ 格式化，
+            // 而它们默认是 0，于是「还没收到报文」和「笔真的在原点」长得一模一样。
+            string xyz = st.HasPosition
+                ? "X " + st.WX.ToString("F2") + "   Y " + st.WY.ToString("F2")
+                  + "   Z " + st.WZ.ToString("F2")
+                : "X —   Y —   Z —";
+            _droLbl.Text = xyz + "\n" + st.State
+                         + " | MPos " + (st.HasMPos ? st.MX.ToString("F1") + "," + st.MY.ToString("F1") : "—")
                          + " | Bf " + st.BufferFree + " | Ov " + st.FeedOverride + "%";
 
             _bar.Connected = _grbl.IsOpen;
             _bar.GrblState = st.State.ToString();
             _bar.BufferFree = st.BufferFree;
             _bar.Override = st.FeedOverride;
-            _bar.SetPos(st.WX, st.WY, st.WZ, true);
+            _bar.SetPos(st.WX, st.WY, st.WZ, st.HasPosition);
             _bar.PenDown = _pen.PenDown;
 
             _pen.SetStatus(st);
@@ -469,16 +485,30 @@ namespace InkPen.UI
 
         // ---------- 自动重连（A3） ----------
 
+        // 是否处于「一次掉线引发的连续重连」过程中。
+        // 没有这个标记时，排程里每轮都 Reset()，而 TryReconnect → Connect → Disconnect
+        // → OnConnectionChanged(false) → ScheduleReconnect 会把 Attempts 每轮清零，
+        // 于是退避固定 2s、MaxAttempts 永不耗尽，日志里那句「最多 8 次」是假的。
+        private bool _reconnectSession;
+
         /// <summary>掉线后排程一次重连。用户主动断开 / 正在关闭 / 已被 job 主动停止时不排。</summary>
         private void ScheduleReconnect()
         {
             if (_closing || _userDisconnect || !_autoReconnect.Checked) return;
             if (_reconnectPolicy.Port.Length == 0) return;
-            _reconnectPolicy.Reset();
+            bool fresh = !_reconnectSession;
+            if (fresh)
+            {
+                _reconnectPolicy.Reset();      // 新一轮掉线才把退避清零
+                _reconnectSession = true;
+            }
             _reconnectTimer.Stop();
             _reconnectTimer.Interval = 1000;
             _reconnectTimer.Start();
-            Log("连接断开，1s 后开始自动重连（最多 " + _reconnectPolicy.MaxAttempts + " 次）");
+            Log(fresh
+                ? "连接断开，1s 后开始自动重连（最多 " + _reconnectPolicy.MaxAttempts + " 次）"
+                : "重连未成功，退避后继续（已尝试 " + _reconnectPolicy.Attempts
+                  + "/" + _reconnectPolicy.MaxAttempts + " 次）");
         }
 
         private void TryReconnect()
@@ -507,6 +537,7 @@ namespace InkPen.UI
                 if (_grbl.Connect(_reconnectPolicy.Port, _reconnectPolicy.Baud))
                 {
                     _reconnectTimer.Stop();
+                    _reconnectSession = false;      // 这一轮掉线结束了，下次掉线重新从 1s 起退避
                     Log("自动重连成功");
                     _grbl.SendCommand("$I");
                     _grbl.SendCommand("$$");
@@ -682,13 +713,39 @@ namespace InkPen.UI
         /// <summary>写 JSON 时用无 BOM 的 UTF-8：带 BOM 的文件会让很多外部工具解析失败。</summary>
         private static readonly System.Text.UTF8Encoding Utf8NoBom = new System.Text.UTF8Encoding(false);
 
+        /// <summary>
+        /// 原子写：先写同目录临时文件，再整体替换。
+        ///
+        /// 直接 File.WriteAllText 覆盖，断电/崩溃/磁盘满会留下半截文件。这几个文件存的
+        /// 是 Z 高度、轴方向、幅面、宏、纸面高度图——全是标定数据，坏一次就要重新上机调。
+        /// 读侧虽然有容错（坏字段回落默认值），但那恰恰最坏：读出一份"看起来正常、
+        /// 其实全是默认值"的配置，用户不会知道标定已经丢了。
+        /// </summary>
+        private static void WriteAllTextAtomic(string path, string text, System.Text.Encoding enc)
+        {
+            string dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            string tmp = path + ".tmp";
+            File.WriteAllText(tmp, text, enc);
+            if (File.Exists(path))
+            {
+                try { File.Replace(tmp, path, path + ".bak"); }
+                catch
+                {
+                    // 跨分区或权限受限时 Replace 会失败，退化成覆盖写，但至少内容已完整落盘
+                    File.Copy(tmp, path, true);
+                    try { File.Delete(tmp); } catch { }
+                }
+            }
+            else File.Move(tmp, path);
+        }
+
         private void SaveConfig()
         {
             try
             {
                 ApplyUiToConfig();
-                Directory.CreateDirectory(Path.GetDirectoryName(_configPath));
-                File.WriteAllText(_configPath,
+                WriteAllTextAtomic(_configPath,
                     ConfigBinder.Serialize(_tpl, _cfg, _txt.Text), Utf8NoBom);
                 Log("配置已保存: " + _configPath);
             }
@@ -798,7 +855,10 @@ namespace InkPen.UI
             if (d.ShowDialog() != DialogResult.OK) return;
             try
             {
-                File.WriteAllText(d.FileName, _gcodeBox.Text, System.Text.Encoding.ASCII);
+                // 一律从 Job 取权威文本。不再读 _gcodeBox.Text：那是预览控件，
+                // 受 MaxLength/编辑状态影响，长稿会被静默截断
+                // （4 页样例 499k 字符，默认上限 32767，只能发出去 6.6%，截断点还会落在行中间）。
+                File.WriteAllText(d.FileName, GCodeBuilder.ToText(_job, 0), System.Text.Encoding.ASCII);
                 string meta = Path.ChangeExtension(d.FileName, ".job.json");
                 Dictionary<string, object> o = new Dictionary<string, object>();
                 o["text"] = _job.Text;
@@ -834,6 +894,13 @@ namespace InkPen.UI
             _cfg.PortName = port; _cfg.BaudRate = baud;
             if (_grbl.Connect(port, baud))
             {
+                // 重连策略必须记住这次连的是哪个口：ScheduleReconnect/TryReconnect
+                // 都以 Port.Length == 0 作为「没有可重连目标」的判据，
+                // 不在这里赋值，勾选了「断开后自动重连」也永远不会触发。
+                _reconnectPolicy.Port = port;
+                _reconnectPolicy.Baud = baud;
+                _reconnectPolicy.Reset();
+                _reconnectSession = false;      // 手动连上了：下次掉线从头算退避
                 Log("连接成功，读取固件信息…");
                 _grbl.SendCommand("$I");
                 _grbl.SendCommand("$$");
@@ -848,10 +915,29 @@ namespace InkPen.UI
         {
             if (_stream != null && _stream.IsRunning)
             {
-                Log("书写进行中，已忽略该手动指令（会打乱字符计数流控）。如需干预请先「暂停」。");
+                // 文案必须与实现一致：暂停只是让队列停下来，worker 线程仍活着（IsRunning 恒真），
+                // 所以「先暂停再手动干预」是条走不通的路。原来那句提示把人往死路上引。
+                Log("书写进行中，已忽略该手动指令（会打乱字符计数流控）。"
+                  + "「暂停」只停住队列、不放行手动指令——要手动干预请先「停止」。");
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// 手动指令的统一出口：书写中（含暂停）一律拒绝，未连接时给出明确提示。
+        ///
+        /// 为什么要收口：手动指令也会回一个 ok，而 StreamController.HandleOk 是无条件
+        /// 出队在途行的。书写中发 `$H`，那个 ok 会被当成某条 GCode 行的确认，
+        /// 字符计数提前释放 → RX 缓冲被灌爆 → 随机丢行（写出来少笔画，且日志看不出原因）。
+        /// 更直接的伤害是回零时笔还压在纸上，会拖穿纸面。
+        /// </summary>
+        private bool SendGuarded(string cmd, string what)
+        {
+            if (ManualBlocked()) return false;
+            if (_grbl == null || !_grbl.IsOpen) { Log("未连接，无法执行「" + what + "」"); return false; }
+            _grbl.SendCommand(cmd);
+            return true;
         }
 
         private void Jog(string axis, int sign)
@@ -971,8 +1057,7 @@ namespace InkPen.UI
         {
             try
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(_macroPath));
-                File.WriteAllText(_macroPath, _macros.ToJson(), Utf8NoBom);
+                WriteAllTextAtomic(_macroPath, _macros.ToJson(), Utf8NoBom);
             }
             catch (Exception ex) { Log("保存宏失败: " + ex.Message); }
         }
@@ -1048,7 +1133,24 @@ namespace InkPen.UI
         {
             if (!ProbePreflight()) return;
 
-            // 单点对刀就地探测：不移动 XY，避免把笔拖到别处
+            // 单点对刀就地探测：不移动 XY，避免把笔拖到别处。
+            // 坐标必须来自真实状态报文：没收到 WPos/MPos 时 GrblStatus 里是默认 0，
+            // 拿它当位置会让机器自己横穿整张纸跑到工件原点，探到夹具上还会把
+            // 那个错误的接触 Z 写回书写 Z。
+            if (!_grbl.Status.HasPosition)
+            {
+                Log("拿不到当前坐标（状态报文里既没有 WPos 也没有 MPos+WCO），无法就地探测。");
+                MessageBox.Show(
+                    "还没收到控制器的位置报文，无法就地探测。\n\n"
+                  + "请确认：\n"
+                  + "1) 已连接且控制器不在报警状态\n"
+                  + "2) 等 1~2 秒让状态刷新（DRO 三个轴应显示数字，而不是「—」）\n"
+                  + "3) 若一直拿不到，检查 $10 状态报告掩码是否关闭了位置输出\n\n"
+                  + "拿不到真实坐标时硬着头皮探测，机器会自己跑到工件原点。",
+                    "无法对刀", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             double x = _grbl.Status.WX, y = _grbl.Status.WY;
             List<string> lines = ProbePlanner.BuildSinglePoint(_cfg, x, y, _cfg.ProbeTravelMm);
 
@@ -1063,6 +1165,29 @@ namespace InkPen.UI
             BeginProbe(steps, "单点对刀（当前位置）",
                 "探到纸面后会把书写 Z 设为「接触 Z + 压入 "
                 + GCodeBuilder.F((double)_pressDepth.Value) + " mm」", true);
+        }
+
+        /// <summary>
+        /// 真正中止探测。
+        ///
+        /// `_probe.Cancel()` 只是把状态机的标志翻过来，机器那边什么也没发生：
+        /// G38.2 还在以探测进给往下压，直到走完 ProbeTravelMm 或顶到硬限位。
+        /// 探针顶在纸上、笔压穿纸面，都是这么来的。必须用实时命令打断运动。
+        /// soft reset 会丢掉位置（探测本来就是中断重来，可接受），但能立刻停住轴。
+        /// </summary>
+        private void AbortProbe(string why)
+        {
+            _probeWatch.Stop();
+            if (_probe == null || !_probe.Running)
+            {
+                if (_probeDlg != null) { _probeDlg.Finish("已中止", false); _probeDlg = null; }
+                return;
+            }
+            _probe.Cancel();
+            _grbl.SendRealtime(0x18);   // soft reset：立即停止下压
+            Log("探测已中止（" + why + "）：已发送 soft reset 停止运动。"
+              + "控制器会重启，位置不可信——重新探测前请先回零/设原点。");
+            if (_probeDlg != null) { _probeDlg.Finish("已中止，未写入高度图", false); _probeDlg = null; }
         }
 
         private void BeginProbe(List<ProbeStep> steps, string title, string hint, bool single)
@@ -1160,6 +1285,28 @@ namespace InkPen.UI
                 ? _heightMap.Summary() + (_heightMap.FailCount > 0 ? "（失败点已用邻点补）" : "")
                 : "全部点都未接触到纸面，高度图无效";
             Log("网格探测完成：" + msg);
+
+            // 网格探测也必须回填书写 Z。
+            //
+            // ApplyResults 把「第一个成功点」当作基准 0，之后所有补偿值都是相对它的偏差。
+            // 如果书写 Z 仍是探测前手填的那个数，就等于把基准丢掉了：整篇会整体偏移
+            // 一个常数值（README 又写着「单点对刀 或 网格探测」二选一，只跑网格是常见路径）。
+            // 这里把「基准接触 Z + 压入量」写回，与单点对刀的口径保持一致。
+            if (_heightMap.Valid)
+            {
+                ProbePoint basePt = null;
+                foreach (ProbePoint p in _probePointCache) { if (p != null && p.Ok) { basePt = p; break; } }
+                if (basePt != null)
+                {
+                    double writeZ = basePt.Z + (double)_pressDepth.Value;
+                    _writeZ.Value = (decimal)Clamp(writeZ, -50, 100);
+                    ApplyUiToConfig();
+                    Generate();
+                    Log("网格探测基准：接触 Z=" + GCodeBuilder.F(basePt.Z) + "，压入 "
+                        + GCodeBuilder.F((double)_pressDepth.Value) + " mm → 书写 Z="
+                        + GCodeBuilder.F(writeZ) + "（高度图在此基础上做相对补偿）");
+                }
+            }
             if (_probeDlg != null) _probeDlg.Finish(msg, _heightMap.Valid);
             _probeDlg = null;
         }
@@ -1178,8 +1325,7 @@ namespace InkPen.UI
             try
             {
                 ApplyUiToConfig();
-                Directory.CreateDirectory(Path.GetDirectoryName(_hmPath));
-                File.WriteAllText(_hmPath, _heightMap.ToJson(), Utf8NoBom);
+                WriteAllTextAtomic(_hmPath, _heightMap.ToJson(), Utf8NoBom);
             }
             catch (Exception ex) { Log("保存高度图失败: " + ex.Message); }
         }
@@ -1213,6 +1359,17 @@ namespace InkPen.UI
         {
             if (_job == null || _job.GCode.Count == 0) { Log("请先生成 GCode"); return; }
             if (fromLine >= _job.GCode.Count) { Log("起始行超出 GCode 范围，未发送"); return; }
+            if (_stream != null && _stream.IsRunning)
+            {
+                Log("已有书写任务在进行（或处于暂停）。请先「停止」，再开始新的书写，"
+                  + "否则两批 GCode 会在同一张纸上叠加。");
+                return;
+            }
+            if (_probe != null && _probe.Running)
+            {
+                Log("探测正在进行，不能同时开始书写。请先等探测结束或点「停止」。");
+                return;
+            }
             if (!_grbl.IsOpen) { MessageBox.Show("串口未连接。请先连接机器，或先用仿真回放验收。", "未连接"); return; }
             DialogResult r = MessageBox.Show(
                 "即将开始真机书写。\n\n请确认：\n1) 已完成离线仿真与 GCode 静态校验\n2) Z 安全高度 / 书写高度 / 轴方向已标定\n3) 纸张已固定、笔已装好、原点已设定\n\n继续？",
@@ -1220,10 +1377,12 @@ namespace InkPen.UI
             if (r != DialogResult.OK) return;
 
             List<string> lines = new List<string>();
-            string src = fromLine > 0 ? GCodeBuilder.ToText(_job, fromLine) : _gcodeBox.Text;
+            // 始终用 Job 生成（含续写前缀），不读预览框
+            string src = GCodeBuilder.ToText(_job, fromLine);
             string[] arr = src.Replace("\r\n", "\n").Split('\n');
             foreach (string l in arr) if (l.Trim().Length > 0) lines.Add(l.Trim());
             _sendStart = DateTime.Now;
+            _sendBaseLine = fromLine;
             _stream.AckTimeoutMs = _cfg.AckTimeoutMs;
             _bar.Error = false;
             _bar.StateText = "开始书写";

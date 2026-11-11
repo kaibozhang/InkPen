@@ -188,6 +188,13 @@ namespace InkPen.Core
             // 上一次真正写给 GRBL 的落笔 Z。高度补偿是「相对上一次的变化量」触发，
             // 所以必须跨笔画、跨页保留，否则每次换笔都会多吐一条无意义的 Z 行。
             double lastZ = m.WriteZ;
+
+            // 抬笔高度必须跟着纸面一起抬高。
+            // 高度图启用后落笔 Z 会随位置变化（纸面高的一侧 Z 更大），如果抬笔仍写死 SafeZ，
+            // 那在纸面高过 SafeZ 的那一侧，每次抬笔横移都是在纸上压着拖行——
+            // 而校验器只看未补偿的 WriteZ，照样放行，属于「文件合法、真机毁纸」的典型。
+            // 取「相对基准的最大正偏差」作为统一抬高量：任何位置的抬笔间隙都不小于 SafeZ。
+            double liftZ = SafeLiftZ(job);
             foreach (Page page in job.Pages)
             {
                 if (includeGrid && job.Template.DrawGrid)
@@ -227,7 +234,7 @@ namespace InkPen.Core
                                              + (first.Y - lastY) * (first.Y - lastY));
                         if (penDown && gap > m.ConnectDistanceMm)
                         {
-                            Emit(job, "G0 Z" + F(m.SafeZ), null);
+                            Emit(job, "G0 Z" + F(liftZ), null);
                             penDown = false;
                         }
                         EmitPath(job, pts, ref penDown, ref lastX, ref lastY, ref lastZ,
@@ -235,7 +242,7 @@ namespace InkPen.Core
                     }
                 }
             }
-            if (penDown) Emit(job, "G0 Z" + F(m.SafeZ), null);
+            if (penDown) Emit(job, "G0 Z" + F(liftZ), null);
             Emit(job, "(INKPEN JOB END)", null);
             AddLines(job, m.EndGCode, -1, -1, -1, -1, 0);
         }
@@ -363,6 +370,49 @@ namespace InkPen.Core
             return job.GCode.Count;
         }
 
+        /// <summary>
+        /// 抬笔时应达到的 Z（机器坐标）。未启用高度图时就是 SafeZ；
+        /// 启用了就再加上纸面相对基准的最大正偏差，保证在纸面最高处也有不小于 SafeZ 的间隙。
+        /// </summary>
+        public static double SafeLiftZ(Job job)
+        {
+            MachineConfig m = job.Machine;
+            if (m == null) return 0;
+            double z = m.SafeZ;
+            if (m.UseHeightMap && job.HeightMap != null && job.HeightMap.IsUsable)
+            {
+                double d = job.HeightMap.MaxZ();
+                if (d > 0) z += d;
+            }
+            return z;
+        }
+
+        /// <summary>
+        /// 续写起点是否处于「笔已落下」的状态；是则返回当时那条落笔 Z。
+        ///
+        /// 判断方法：从起点向前找最近的一条 Z 指令。碰到 G1 Z 说明笔是落着的，
+        /// 碰到 G0 Z 说明笔是抬着的（G0 的 Z 一律视为抬笔），两者都没有就是文件开头，
+        /// 默认抬笔。只看 Z 指令就够了：本生成器保证每次抬落笔都显式写 Z。
+        /// </summary>
+        private static bool TryFindResumePenDownZ(Job job, int fromLine, out double z)
+        {
+            z = 0;
+            for (int i = fromLine - 1; i >= 0; i--)
+            {
+                string t = job.GCode[i].Text;
+                if (t == null) continue;
+                if (t.StartsWith("G0 Z", StringComparison.Ordinal)) return false;
+                if (t.StartsWith("G1 Z", StringComparison.Ordinal))
+                {
+                    string v = t.Substring(4);
+                    int sp = v.IndexOf(' ');
+                    if (sp > 0) v = v.Substring(0, sp);
+                    return double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out z);
+                }
+            }
+            return false;
+        }
+
         public static string ToText(Job job, int fromLine)
         {
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
@@ -370,10 +420,22 @@ namespace InkPen.Core
             {
                 // 对齐 GRBL-Plotter 的 StreamSection 做法：续写前恢复模态状态与抬笔，
                 // 避免从中途开始时沿用未知的 G90/G91、G20/G21、F 状态。
+                //
+                // 顺序不能反：G0 Z 必须在 G21/G90/G94 **之后**。
+                // 若机器此刻停在 G91（增量）或 G20（英寸），先发 G0 Z 会被解释成
+                // 「相对当前多走 Z 毫米」或「走到 Z 英寸」，直接怼进纸里或撞上限位。
                 sb.Append("(RESUME FROM LINE " + (fromLine + 1) + ")\n");
-                sb.Append("G0 Z" + F(job.Machine.SafeZ) + "\n");
                 sb.Append("G21\nG90\nG94\n");
+                sb.Append("G0 Z" + F(SafeLiftZ(job)) + "\n");
                 sb.Append("F" + F(job.Machine.XYFeed) + "\n");
+
+                // 续写起点若落在「连笔」中间（该行是 G1 X.. Y..，此前没有抬笔），
+                // 前缀刚把笔抬起来，而后续行里没有落笔指令——从这一行到下一条
+                // G1 Z/G0 Z 之间的所有笔画都会在纸面上方空走，写出来是缺笔。
+                // 往前找最近的一条 Z 指令：是落笔 Z 就补回去，是抬笔 Z 就什么都不做。
+                double resumeZ;
+                if (TryFindResumePenDownZ(job, fromLine, out resumeZ))
+                    sb.Append("G1 Z" + F(resumeZ) + " F" + F(job.Machine.ZFeed) + "\n");
             }
             for (int i = fromLine; i < job.GCode.Count; i++)
                 sb.Append(job.GCode[i].Text).Append('\n');

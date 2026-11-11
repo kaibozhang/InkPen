@@ -51,9 +51,20 @@ namespace InkPen.Core
             List<Page> pages, Rng rng, double usableW, double usableH, double lineH)
         {
             TemplateConfig t = job.Template;
-            double x = t.MarginLeft + (pages.Count == 1 ? t.FirstLineIndentMm : 0.0);
+            // 方格/田字格是「一字一格」：首行缩进必须落在格线上，否则字形从 MarginLeft+indent
+            // 起排、格线却从 MarginLeft 起按 cell 排列，整行字都压在格边上。
+            double indent = (pages.Count == 1 ? t.FirstLineIndentMm : 0.0);
+            if (indent > 0 && (t.Kind == TemplateKind.Grid || t.Kind == TemplateKind.Tianzi))
+            {
+                double cell = t.FontSizeMm + t.CharGapMm;
+                if (cell > 0.5) indent = Math.Round(indent / cell) * cell;
+            }
+            double x = t.MarginLeft + indent;
+            double lineStartX = x;                       // 本行排版的起点，两端对齐要按它算补量
             double y = job.Machine.PaperHeightMm - t.MarginTop - t.FontSizeMm;
-            double bottom = t.MarginBottom + t.FontSizeMm;
+            // y 是字身底边（字形占 [y, y+FontSize]），所以页底判定就该是 MarginBottom。
+            // 原来多扣了一个字号，每页白扔一整行，横排还因此比竖排少排一行。
+            double bottom = t.MarginBottom;
             int lineIndex = 0, charIndex = 0;
             List<PlacedGlyph> line = new List<PlacedGlyph>();
 
@@ -61,12 +72,22 @@ namespace InkPen.Core
             for (int i = 0; i < text.Length; i++)
             {
                 char ch = text[i];
+                // 非 BMP 字符（emoji、扩展区汉字）在 UTF-16 里是两个 char。按代码单元迭代会把
+                // 一个码点当两个字：缺字记两条孤立代理、宽度多占一格。合并成一个码点再查字形。
+                int cp = ch;
+                if (char.IsHighSurrogate(ch) && i + 1 < text.Length
+                    && char.IsLowSurrogate(text[i + 1]))
+                {
+                    cp = char.ConvertToUtf32(ch, text[i + 1]);
+                    i++;                                  // 吃掉低代理，循环再 +1 正好跳过整对
+                }
                 if (ch == '\n')
                 {
-                    FlushLine(page, line, lineIndex, t, usableW);
+                    FlushLine(page, line, lineIndex, t, usableW, lineStartX);
                     line.Clear();
                     lineIndex++;
                     x = t.MarginLeft;
+                    lineStartX = x;
                     y -= lineH;
                     if (y < bottom)
                     {
@@ -79,53 +100,99 @@ namespace InkPen.Core
                 }
                 if (ch == ' ')
                 {
-                    x += t.FontSizeMm * 0.5;
+                    double sp = t.FontSizeMm * 0.5;
+                    // 空格也要受行宽约束。之前它无条件推进 x，于是「行首连打十几个空格」
+                    // 就能把后面的字一路推出纸外，而排版阶段没有任何提示。
+                    if (x + sp > t.MarginLeft + usableW)
+                    {
+                        if (line.Count > 0)
+                        {
+                            FlushLine(page, line, lineIndex, t, usableW, lineStartX);
+                            line.Clear();
+                            lineIndex++;
+                            x = t.MarginLeft;
+                            lineStartX = x;
+                            y -= lineH;
+                            if (y < bottom)
+                            {
+                                page = NewPage(pages.Count, job.Machine);
+                                pages.Add(page);
+                                y = job.Machine.PaperHeightMm - t.MarginTop - t.FontSizeMm;
+                                lineIndex = 0;
+                            }
+                            continue;   // 换行后这个空格当行首空格丢弃，避免行首缩进越积越多
+                        }
+                        // 整行都是空格：把游标夹回右边界，不换行（否则会空白页刷屏）
+                        x = t.MarginLeft + usableW - sp;
+                    }
+                    x += sp;
                     continue;
                 }
 
                 string src;
-                StrokeGlyph g = fonts.Get(ch, out src);
+                StrokeGlyph g = fonts.Get(cp, out src);
                 if (g == null)
                 {
-                    if (!job.MissingChars.Contains(ch.ToString())) job.MissingChars.Add(ch.ToString());
+                    string miss = cp > 0xFFFF ? char.ConvertFromUtf32(cp) : ch.ToString();
+                    if (!job.MissingChars.Contains(miss)) job.MissingChars.Add(miss);
                     x += t.FontSizeMm;
                     continue;
                 }
                 double adv = Math.Max(g.Advance, 1) / 1024.0 * t.FontSizeMm + t.CharGapMm;
                 if (x + adv > t.MarginLeft + usableW && line.Count > 0)
                 {
-                    // 避头尾：行首禁则字符上移到上一行；行尾禁则字符下移到下一行
-                    if (NO_LINE_START.IndexOf(ch) >= 0)
-                    {
-                        // 允许轻微越界把标点挤在行尾
-                    }
-                    else if (line.Count > 0 && NO_LINE_END.IndexOf(line[line.Count - 1].Ch) >= 0)
+                    // 避头尾：
+                    //  · 行首禁则字符（。，」等）允许挤在行尾，但**只能挤一个字宽**。
+                    //    原来这里是空语句，连续标点（“……”“！！！”）会一路往右挤，
+                    //    最终整行墨迹落到纸外，而画布和校验器都不会报错。
+                    //  · 行尾禁则字符（“（等）下移到下一行时，必须先换页再放置，
+                    //    否则字形会留在上一页的页底，与它所在的行隔着一整页。
+                    bool hangOk = NO_LINE_START.IndexOf(ch) >= 0
+                               && (x + adv) - (t.MarginLeft + usableW) <= t.FontSizeMm * 1.05;
+
+                    if (!hangOk && line.Count > 0 && NO_LINE_END.IndexOf(line[line.Count - 1].Ch) >= 0)
                     {
                         PlacedGlyph moved = line[line.Count - 1];
                         line.RemoveAt(line.Count - 1);
-                        FlushLine(page, line, lineIndex, t, usableW);
+                        FlushLine(page, line, lineIndex, t, usableW, lineStartX);
                         line.Clear();
-                        line.Add(moved);
-                        moved.X = t.MarginLeft;
-                        moved.Y -= lineH;
-                        moved.LineIndex = ++lineIndex;
-                        x = t.MarginLeft + moved.AdvanceMm;
+                        lineIndex++;
                         y -= lineH;
+                        // 先决定落在哪一页，再算坐标：换页判断必须在 moved 定位之前
+                        if (y < bottom)
+                        {
+                            page = NewPage(pages.Count, job.Machine);
+                            pages.Add(page);
+                            y = job.Machine.PaperHeightMm - t.MarginTop - t.FontSizeMm;
+                            lineIndex = 0;
+                        }
+                        moved.X = t.MarginLeft;
+                        moved.Y = y;
+                        moved.LineIndex = lineIndex;
+                        moved.PageIndex = page.Index;
+                        line.Add(moved);
+                        x = t.MarginLeft + moved.AdvanceMm;
+                        lineStartX = t.MarginLeft;
+                    }
+                    else if (hangOk)
+                    {
+                        // 允许悬挂：什么都不做，继续按原 x 放这个标点
                     }
                     else
                     {
-                        FlushLine(page, line, lineIndex, t, usableW);
+                        FlushLine(page, line, lineIndex, t, usableW, lineStartX);
                         line.Clear();
                         lineIndex++;
                         x = t.MarginLeft;
+                        lineStartX = x;
                         y -= lineH;
-                    }
-                    if (y < bottom)
-                    {
-                        page = NewPage(pages.Count, job.Machine);
-                        pages.Add(page);
-                        y = job.Machine.PaperHeightMm - t.MarginTop - t.FontSizeMm;
-                        lineIndex = 0;
+                        if (y < bottom)
+                        {
+                            page = NewPage(pages.Count, job.Machine);
+                            pages.Add(page);
+                            y = job.Machine.PaperHeightMm - t.MarginTop - t.FontSizeMm;
+                            lineIndex = 0;
+                        }
                     }
                 }
 
@@ -142,7 +209,7 @@ namespace InkPen.Core
                 line.Add(pg);
                 x += adv;
             }
-            FlushLine(page, line, lineIndex, t, usableW);
+            FlushLine(page, line, lineIndex, t, usableW, lineStartX);
             foreach (PlacedGlyph pg in page.Glyphs) pg.PageIndex = page.Index;
         }
 
@@ -211,14 +278,16 @@ namespace InkPen.Core
         }
 
         private static void FlushLine(Page page, List<PlacedGlyph> line, int lineIndex,
-                                      TemplateConfig t, double usableW)
+                                      TemplateConfig t, double usableW, double lineStartX)
         {
             if (line.Count == 0) return;
             if (t.Justify || t.CenterVertically)
             {
                 double used = 0;
                 foreach (PlacedGlyph p in line) used += p.AdvanceMm;
-                double extra = usableW - used;
+                // 补量必须相对本行的**实际起点**算。首行有缩进时起点是 MarginLeft+indent，
+                // 按 MarginLeft 算会稳定多补一个 indent，整行右端顶出右边距。
+                double extra = (t.MarginLeft + usableW) - (lineStartX + used);
                 if (t.CenterVertically && extra > 0)
                     foreach (PlacedGlyph p in line) p.X += extra / 2.0;
                 else if (t.Justify && extra > 0 && line.Count > 1)

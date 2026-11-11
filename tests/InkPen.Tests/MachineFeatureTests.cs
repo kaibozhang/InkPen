@@ -572,9 +572,8 @@ namespace InkPen.Tests
             PenTracker t = new PenTracker();
             t.SetJob(j);
 
-            GrblStatus st = new GrblStatus();
-            st.Raw = "<Idle|MPos:100,200,0|WPos:12,34,0>";
-            st.MX = 100; st.MY = 200; st.WX = 12; st.WY = 34;
+            // 用真实报文构造：手填字段会绕过 ParseStatus，也就测不到「到底哪段被采信」
+            GrblStatus st = GrblClient.ParseStatus("<Idle|MPos:100,200,0|WPos:12,34,0>");
             t.SetStatus(st);
 
             Assert.IsTrue(t.HasPosition);
@@ -583,19 +582,37 @@ namespace InkPen.Tests
         }
 
         [TestMethod]
-        public void SetStatus_FallsBackToMachinePosition()
+        public void SetStatus_OnlyMposWithoutWco_IsNotTrusted()
         {
             Job j = BuiltJob();
             PenTracker t = new PenTracker();
             t.SetJob(j);
 
-            GrblStatus st = new GrblStatus();
-            st.Raw = "<Idle|MPos:100,200,0>";
-            st.MX = 100; st.MY = 200;
+            // 只有 MPos、没有 WCO：不知道工件偏移，机械坐标不能当工件坐标用。
+            // 之前的实现会直接拿 MX/MY 顶上，设过零点后笔位置整体偏一个 WCO。
+            GrblStatus st = GrblClient.ParseStatus("<Idle|MPos:100,200,0>");
             t.SetStatus(st);
 
-            Assert.AreEqual(100.0, t.Paper.X, 1e-9);
-            Assert.AreEqual(200.0, t.Paper.Y, 1e-9);
+            Assert.IsFalse(st.HasPosition, "没有 WPos 也没有 WCO 时不该认为位置有效");
+            Assert.IsFalse(t.HasPosition, "无效位置不能污染笔跟踪状态");
+        }
+
+        [TestMethod]
+        public void SetStatus_MposPlusWco_IsConvertedToWorkPosition()
+        {
+            Job j = BuiltJob();
+            PenTracker t = new PenTracker();
+            t.SetJob(j);
+
+            // $10 掩码关掉 WPos 的固件只给 MPos + WCO，必须自己换算 W = M - WCO
+            GrblStatus st = GrblClient.ParseStatus("<Idle|MPos:100,200,0|WCO:90,160,0>");
+            Assert.IsTrue(st.HasPosition);
+            Assert.AreEqual(10.0, st.WX, 1e-9);
+            Assert.AreEqual(40.0, st.WY, 1e-9);
+
+            t.SetStatus(st);
+            Assert.AreEqual(10.0, t.Paper.X, 1e-9);
+            Assert.AreEqual(40.0, t.Paper.Y, 1e-9);
         }
 
         [TestMethod]
@@ -608,9 +625,7 @@ namespace InkPen.Tests
             PenTracker t = new PenTracker();
             t.SetJob(j);
 
-            GrblStatus st = new GrblStatus();
-            st.Raw = "<Idle|WPos:10,0,0>";
-            st.WX = 10; st.WY = 0;
+            GrblStatus st = GrblClient.ParseStatus("<Idle|WPos:10,0,0>");
             t.SetStatus(st);
 
             Assert.AreEqual(297.0, t.Paper.Y, 1e-9, "左上原点时机器 Y=0 对应纸面顶部");

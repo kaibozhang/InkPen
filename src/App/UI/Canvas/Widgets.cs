@@ -123,8 +123,8 @@ namespace InkPen.UI
                     Theme.DrawRound(g, badge, 8, Color.FromArgb(120, bc), 1f);
                     using (Font f = Theme.Font(8.6f, FontStyle.Bold))
                     using (Brush b = new SolidBrush(bc))
+                    using (StringFormat sf = new StringFormat())
                     {
-                        StringFormat sf = new StringFormat();
                         sf.Alignment = StringAlignment.Center;
                         sf.LineAlignment = StringAlignment.Center;
                         g.DrawString(Connected ? Label() : "未连接", f, b, badge, sf);
@@ -133,8 +133,8 @@ namespace InkPen.UI
                     {
                         using (Font f = Theme.Mono(7.2f, FontStyle.Regular))
                         using (Brush b = new SolidBrush(Color.FromArgb(130, 148, 170)))
+                        using (StringFormat sf = new StringFormat())
                         {
-                            StringFormat sf = new StringFormat();
                             sf.Alignment = StringAlignment.Center;
                             g.DrawString("Bf " + BufferFree + "  Ov " + Override + "%", f, b,
                                          new RectangleF(badge.X, badge.Bottom + 1, badge.Width, 12), sf);
@@ -244,8 +244,8 @@ namespace InkPen.UI
             {
                 using (Font f = Theme.Font(9f, FontStyle.Regular))
                 using (Brush b = new SolidBrush(Theme.TextDim))
+                using (StringFormat sf = new StringFormat())
                 {
-                    StringFormat sf = new StringFormat();
                     sf.Alignment = StringAlignment.Center;
                     sf.LineAlignment = StringAlignment.Center;
                     g.DrawString("尚无探测数据\n点「开始探测」或读取已保存的高度图",

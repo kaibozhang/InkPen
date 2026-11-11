@@ -19,7 +19,7 @@
 
 1. 编译：双击 `build\build.bat`（零安装：用 .NET Framework 4.8 自带 `csc.exe`，无 NuGet、无外部 DLL）。
    若会话安全策略拦截 `csc.exe`，直接双击该 bat 即可。
-2. 自测：双击 `build\test.bat`（MSBuild 编译 + 140 个单元测试）→ `build\selftest.bat`（端到端）。两条链产物一致。
+2. 自测：双击 `build\test.bat`（MSBuild 编译 + 160 个单元测试）→ `build\selftest.bat`（端到端）。两条链产物一致。
 3. 运行：`dist\InkPen.exe`（xcopy 绿色版，不写注册表、不联网、不需登录）。
 4. 左栏输入文稿 → 点「生成 GCode / 预览」→ 中栏查看仿真（多页稿可用中栏上的「‹ / ›」翻页）。
 5. 中栏「▶ 播放」逐笔回放，确认字形、笔画顺序、格线、抬笔空程。
@@ -61,7 +61,7 @@
 ```
 src/App/              主程序源码（C# 5 / WinForms / 零外部 DLL）
 src/Upstream/         GRBL-Plotter 源码快照（只读参考，保留原版权头）
-tests/InkPen.Tests/   MSTest v2 单元测试（140 个，引用主程序工程，复用生产代码）
+tests/InkPen.Tests/   MSTest v2 单元测试（160 个，引用主程序工程，复用生产代码）
 data/glyphs/          字库 ZIP（InkPen Glyph v1）+ schema.json
 data/glyphs/dev/      开发态每字 JSON（可 diff / 手绘补录）
 tools/                Python 3.12 离线字库与校验脚本（不随 exe 分发）
@@ -81,7 +81,7 @@ docs/                 字库报告、M1 验收记录、界面截图、测试盲�
 | 链 | 用途 |
 |---|---|
 | `csc.exe` 直编 + `build.bat` | **日常主链**，零依赖、零 NuGet；命令文本不含被会话拦截的关键字，产物与 MSBuild 链一致 |
-| MSBuild + `test.bat` | **测试主链**：`InkPen.sln` → `src/App/InkPen.csproj` + `tests/InkPen.Tests/InkPen.Tests.csproj`，跑 140 个 MSTest 用例。工具链为 VS 2022 Build Tools 17.14（`C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`，含 .NET Framework 4.8 Targeting Pack、NuGet、vstest.console） |
+| MSBuild + `test.bat` | **测试主链**：`InkPen.sln` → `src/App/InkPen.csproj` + `tests/InkPen.Tests/InkPen.Tests.csproj`，跑 160 个 MSTest 用例。工具链为 VS 2022 Build Tools 17.14（`C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`，含 .NET Framework 4.8 Targeting Pack、NuGet、vstest.console） |
 | Python 3.12.10 | 仅离线字库生成/转换/校验；所有脚本用绝对路径 `...\Python312\python.exe`，避免与 Git Bash 的 3.13 混淆 |
 
 > 两条 C# 链共享 `build/pack.bat` 打包步骤，`dist/` 内容一致；改代码后建议 `test.bat`（含单元测试）再 `build.bat`。
@@ -127,23 +127,24 @@ cd /d D:\Writer\InkPen\build
 INKPEN_CI=1 cmd /c test.bat
 ```
 
-`test.bat` = NuGet 还原 → 编译 `InkPen.sln` → 打包 → 跑 `vstest.console`。当前 **140 个用例全通过**，覆盖：
+`test.bat` = NuGet 还原 → 编译 `InkPen.sln` → 打包 → 跑 `vstest.console`。当前 **160 个用例全通过**，覆盖：
 
 | 测试文件 | 用例 | 覆盖点 |
 |---|---|---|
 | `GeometryTests` | 11 | 四原点角坐标变换、X/Y 反向、RDP 抽稀（保端点/保尖角/零容差）、手写扰动哈希确定性、笔锋延长、随机数可复现 |
 | `JsonTests` | 8 | 基本类型、转义、嵌套、往返、脏输入不抛异常、**UTF-8 BOM 容忍** |
 | `LayoutTests` | 11 | 横/竖排、缺字上报、分页且字形带正确页号、五类格线、同种子确定性、首行缩进、居中、空文本、字号缩放 |
-| `GCodeTests` | 10 | 抬头/结尾、`G1 Z0`/`G0 Z5`/`G4`、续写元数据注释、原点角翻转、格线开关、字节级确定性、续写前缀、越界返回末尾 |
+| `GCodeTests` | 11 | 抬头/结尾、`G1 Z0`/`G0 Z5`/`G4`、续写元数据注释、原点角翻转、格线开关、字节级确定性、续写前缀、越界返回末尾 |
 | `ValidatorTests` | 10 | 空程序、缺 Z、>80 字节、XY 越界、容差内负坐标、SafeZ 告警、非正进给、幂等清空 |
 | `GlyphRepositoryTests` | 9 | 码点命名、二进制解码、缓存同实例、启用/禁用、重复 Load 不叠加、**真实字库 2 万+ 码点存在性** |
 | `GlyphOrientationTests` | 6 | **字库方向契约（X 与 Y 双向）**：`local`/`mmah` 垂直与水平重心相关系数须为正（整包镜像会变负）、「三」上横短于下横、「P」圆环在上、「L」顶部竖笔贴左缘、「F」左半点数占优 |
-| `GrblProtocolTests` | 7 | 九种状态解析、WPos、垃圾输入、`$` 参数、端口枚举、未连接安全拒绝 |
+| `GrblProtocolTests` | 8 | 九种状态解析、WPos、`WCO:` 换算、垃圾输入、`$` 参数、端口枚举、未连接安全拒绝 |
 | `StreamControllerTests` | 4 | 超单行缓冲中止、ack 超时中止不挂死、跳过注释空行、`Stop()` 终止线程 |
 | `LifecycleTests` | 9 | 停后重启只认新作业、15 次抖动不错乱、暂停仍算运行中、空作业、越界起始行夹取、画布页数/翻页夹取、路径页号不串页 |
 | `UiContractTests` | 5 | 模板下拉与枚举映射（错位缺陷回归）、`$` 参数中文说明覆盖标定关键项、已排版字数统计 |
 | `ConfigBinderTests` | 6 | 全字段类型往返、缺键保默认、脏数据不抛、`int`→`double`、null 输入 no-op |
-| `MachineFeatureTests` | 42 | **高度图**（读写/双线性插值/区域外夹取/平滑/归一化/JSON 往返含 Valid）、**坐标逆变换**（`ToPaper` 必须先撤 Invert 再撤原点角）、**Z 补偿**（未启用时 GCode 一字不变、倾斜纸面才输出额外 Z）、**探测规划**（纸面点转机器坐标发包、失败点 4 邻域补值）、**探测器状态机**（`[PRB:]` 解析、推进前必抬笔、取消即停）、**笔跟踪**（WPos 优先于 MPos、行号→笔画游标可回退）、**重连退避**（指数增长、30 s 封顶）、**宏**（占位符展开、JSON 往返） |
+| `MachineFeatureTests` | 43 | **高度图**（读写/双线性插值/区域外夹取/平滑只削内部毛刺/归一化/JSON 往返含 Valid）、**坐标逆变换**（`ToPaper` 必须先撤 Invert 再撤原点角）、**Z 补偿**（未启用时 GCode 一字不变、倾斜纸面才输出额外 Z）、**探测规划**（纸面点转机器坐标发包、失败点 4 邻域补值）、**探测器状态机**（`[PRB:]` 解析、推进前必抬笔、取消即停、迟到回报不记到下一个点）、**笔跟踪**（WPos 优先、只有 MPos+WCO 时自算、两者都无则视为无效）、**重连退避**（指数增长、30 s 封顶）、**宏**（占位符展开、JSON 往返） |
+| `AuditRegressionTests` | 19 | **多维度审计的缺陷回归**：抬笔跟着纸面倾斜抬高、续写前缀先声明单位再动 Z、续写进连笔段补回落笔、悬挂标点有上限、行首空格不越界、行尾禁则跨页不错位、两端对齐不因缩进而溢出、页底不多扣一个字高、格线随缩进吸附、代理对按码点计数、小网格平滑不抹平倾斜、迟到 `[PRB:]` 不被错记账、`LoadErrors` 不跨次累积 |
 
 > 这些用例做过**注入验证**：故意把实现改坏，确认测试会红。首轮 7 处注入只抓到 6 处——转置缺陷因 2×2 网格对称而漏检、漏抬笔因断言只比字符串相同而漏检。两处都已加固（3×2 非对称网格、比对总行数与具体下标），复验均能抓到。复盘见 `docs/testing_pitfalls.md`。
 

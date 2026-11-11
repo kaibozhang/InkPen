@@ -58,7 +58,12 @@ def main(argv):
         # StreamController strips spaces before sending and hard-aborts above
         # GRBL 1.1's LINE_BUFFER_SIZE (80 bytes). Match that rule here so a
         # hand-edited .nc fails OFFLINE instead of at the machine.
-        wire_bytes = len(s.replace(" ", "").encode("ascii", "replace"))
+        #
+        # 必须用 raw（未剥注释）来量：发送端只做 raw.Replace(" ", "")，
+        # `;` 注释是连同内容一起发出去的，也占 GRBL 的行缓冲。
+        # 之前这里量的是剥完注释的 s，于是「带长注释的行」离线 PASS、真机必被中止。
+        wire = raw.replace(" ", "").replace("\t", "")
+        wire_bytes = len(wire.encode("ascii", "replace"))
         if wire_bytes > 80:
             errors.append("行 %d 压缩后 %d 字节超过 GRBL 单行缓冲 80 字节，会被静默截断" % (i, wire_bytes))
         if META.search(s):

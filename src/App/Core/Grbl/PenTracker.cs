@@ -19,7 +19,6 @@ namespace InkPen.Core
         private Job _job;
         private int _pathCursor = 0;
         private int _lastUpper = -1;
-        private bool _sawWPos = false;
 
         /// <summary>笔尖纸面坐标（mm）。</summary>
         public Pt Paper = new Pt(0, 0);
@@ -61,11 +60,10 @@ namespace InkPen.Core
         public void SetStatus(GrblStatus st)
         {
             if (st == null || _job == null) return;
+            if (!st.HasPosition) return;   // 报文里根本没有有效坐标（只有状态字），不要拿默认 0 当位置
 
-            double x, y;
-            if (st.Raw != null && st.Raw.IndexOf("WPos:", StringComparison.Ordinal) >= 0) _sawWPos = true;
-            if (_sawWPos) { x = st.WX; y = st.WY; }
-            else { x = st.MX; y = st.MY; }
+            // WPos 优先；只有 MPos + WCO 时 ParseStatus 已经换算过，WX 一样可用。
+            double x = st.WX, y = st.WY;
 
             // 有些固件在未回零时全报 0；全 0 且连接正常也可能是真的原点，不做丢弃，
             // 只是标记有位置，让画布能画出「笔在原点」的真实情况。

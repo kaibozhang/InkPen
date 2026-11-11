@@ -178,6 +178,106 @@
 | 「读取配置」文字被裁 | 按钮宽 60 px 装不下四个汉字 | 改成三行布局：导出整行、保存/读取各 126 px |
 | 工具栏选中框是系统蓝 | `CheckOnClick` 的「空程」「笔位」显示系统蓝色选中框，与青/琥珀配色打架，旁边「播放」却是纯文字 | 加 `BarRenderer`：悬停极淡青底、选中淡青底 + 细边、标签文字压暗一档 |
 
+## 3.5 第五轮：五路并行审计（39 条）+ 全量修复
+
+用户指令：「组建测试团队对这个程序从多个维度全量进行测试，并修复bug，回归测试完之后提交到github」。
+
+### 组织方式
+
+5 个子代理并行只读审计，各管一个维度，只允许写 `docs/_audit/<x>.md`，**禁止改源码、禁止跑构建**（避免与主线程抢 `obj/bin`）。这份约束不是为了省事，是因为并行写同一份 obj 目录会让彼此的编译结果互相污染，最后分不清哪个错误是真缺陷。
+
+| 报告 | 维度 | 报出 | 其中 P0 |
+|---|---|---|---|
+| `docs/_audit/a_layout_glyph.md` | 排版 / 字库 / 标点 | 8 | 0 |
+| `docs/_audit/b_gcode_numeric.md` | GCode / 数值 / Z 补偿 | 7（另附 9 条「已复核不是缺陷」） | 0 |
+| `docs/_audit/c_protocol_stream.md` | 串口协议 / 流控 / 状态机 | 8 | 1 |
+| `docs/_audit/d_ui_state.md` | UI 状态 / 互斥 / 持久化 | 8 | 1 |
+| `docs/_audit/e_engineering.md` | 工程健壮性 / 构建链 | 8（另附 6 项配置项孤儿） | 1 |
+
+对代理的约束：最多 8 条、每条必须带 `文件:行` 证据、必须说清触发条件、不许报命名/注释/风格。没有这些约束，8 条会变成 80 条噪声。
+
+**审计报告是线索，不是判决。** 12 条 P0/P1 全部自己走一遍调用链复核后才定级；方向和证据基本都对，但严重度有 3 条被高估。详见 `docs/testing_pitfalls.md` 第 8 节。
+
+### 三个 P0（都会让人「以为一切正常」）
+
+| 缺陷 | 为什么危险 | 修复 |
+|---|---|---|
+| **C1 GRBL 从不主动推送状态** | 全项目**从未发过实时字符 `?`**。`ParseStatus` 写得再对、单测再全绿，那条 RX 管线也从没启动过——实时笔位置、状态徽标、坐标胶囊全部是死的，且没有任何报错 | `Connect()` 成功后启动 250 ms 后台轮询 `QueryStatus()`；`SendRealtime` 加锁并先取本地引用 |
+| **D1 手动指令守卫漏了 `$` 系列** | 书写中仍可点「解锁 / 回零 / 设原点」，它们回的 `ok` 被 `HandleOk` 当作在途 GCode 的 ack 抵扣额度 → 多发一行 → GRBL 127 字节缓冲溢出 → 整行被丢弃（漏笔画） | 全部改走 `SendGuarded()`：`ManualBlocked()` + 未连接提示 + `SendCommand` 三合一 |
+| **E1 `_gcodeBox.Text` 被 32767 截断** | WinForms 单行文本上限 32 KB。长文稿的 GCode 超过它之后，控制台发出去的其实是**截断后的前半段**，机器写到一半就停，日志无任何异常 | 发送与导出一律走 `GCodeBuilder.ToText(_job, fromLine)`，不再读控件文本；`_gcodeBox` 设只读 |
+
+### 其余修复（按维度）
+
+| 维度 | 缺陷 | 修复要点 |
+|---|---|---|
+| 协议 | C2 无 WPos 固件只给 `MPos`，代码当纸面坐标用 → 整幅偏移一个工件偏置 | `GrblStatus` 增 `HasWPos/HasMPos/SawWco/Wcx..`；解析 `WCO:` 后自算 `W = M − WCO`；两者都无则 `HasPosition=false`，界面显示 `X — Y — Z —` |
+| 协议 | C3 流水线行号是相对 `_startLine` 的，错误行号与笔跟踪全偏 | 新增 `_sendBaseLine`，`Sent`/`FailedLineNumber` 一律加基准 |
+| 协议 | C5 暂停（Hold）后直接 `Stop()`，控制器留在 Hold 态，下一条指令全被吞 | `_holdSent` 标记，`Stop()` 里补一次 soft reset `0x18` |
+| 协议 | C8 探测超时后迟到的 `[PRB:]` 记到下一个点头上，整条链错位一格，最后一点真实 Z 丢失 | `ProbeRunner` 维护「已发 G38.2 待回收」FIFO；回报不属于当前点就吞掉、不推进 |
+| 协议 | C4 重连策略的 `Port` 从没被赋值；补上后 `ScheduleReconnect` 每轮 `Reset()` 又让退避永不累积 | 连接成功时赋值端口；新增 `_reconnectSession`，只有新一轮掉线才清零退避 |
+| GCode | B1 抬笔高度恒等于 `SafeZ`，纸面高过 `SafeZ` 的一侧每次抬笔都在纸上拖行 | `SafeLiftZ = SafeZ + HeightMap.MaxZ()` |
+| GCode | B5 续写前缀把 `G0 Z` 排在 `G21/G90/G94` 之前，在 G91/G20 下变成增量移动或英寸 | 顺序改为 `G21 → G90 → G94 → G0 Z → F` |
+| GCode | B6 续写起点落在连笔中间时，前缀抬笔后没补回落笔 Z，整段空走 | `TryFindResumePenDownZ` 向前找最近 Z 指令，命中则补 `G1 Z<z> F<zfeed>` |
+| GCode | B7 校验器按「剥注释后」算行长，注释里的字节逃过 80 字节限制 | 改按未剥注释的原始行计字节 |
+| GCode | B2 单点对刀在没有有效坐标时拿默认 0 当基准 → 把「纸面原点」设到机器原点 | 无 `HasPosition` 时弹框拒绝 |
+| GCode | B3 网格探测完不回填书写 Z，探测白做 | `FinishProbe` 取第一个成功点回填 `_writeZ` 并重新生成 |
+| GCode | B4 `Smooth()` 在 2 行/2 列网格上把整轴梯度抹平，起伏显示 0.000 mm（用户以为纸是平的） | 只平滑内部点（边界保持实测）；网格不足 3×3 直接跳过 |
+| 排版 | A1 悬挂标点没有上限，连续标点一路右移出纸 | `hangOk` 加 `≤ FontSizeMm × 1.05` 上限 |
+| 排版 | A2 行尾禁则字符下移时先定位后判换页，字被放在上一页页底 | 先判换页再算 `moved` 坐标 |
+| 排版 | A3 两端对齐的补量按 `MarginLeft` 算，首行有缩进时整行右端稳定溢出 `indent` | `FlushLine` 增 `lineStartX`，补量相对本行实际起点 |
+| 排版 | A4 页底判定多扣一个字号，每页白扔一整行，横排还比竖排少排一行 | `bottom = MarginBottom`（`y` 本就是字身底边） |
+| 排版 | A5 方格/田字格格线不跟随首行缩进，首行每个字都压在格线上 | 缩进吸附到整格 `round(indent/cell)*cell` |
+| 排版 | A6 空格无条件推进 `x`，行首连打空格能把字推出纸外 | 空格也受行宽约束，越界换行；整行空格夹回右边界 |
+| 排版 | A7 代理对被拆成两个 `char`：缺字多记一条、宽度多占一格 | `GlyphRepository.Get(int codePoint)`；排版先 `ConvertToUtf32` 合并代理对 |
+| 排版 | A8 `LoadErrors` 跨次累积，切换字库后错误数翻倍 | `Load` 开头 `LoadErrors.Clear()` |
+| UI | D2 `StartWriting` 不校验已有任务在跑 | 增 `_stream.IsRunning` / `_probe.Running` 两道互斥 |
+| UI | D3 探测中止后状态不清，界面停在「探测中」 | `AbortProbe()`：`Cancel()` + soft reset + 日志「位置不可信」 |
+| UI | D5/E8 画布每帧泄漏 `SolidBrush` + `StringFormat`，点阵背景逐帧画 840 个方块 | 全部 `using`；点阵改成 26×26 贴图 + `TextureBrush` 一次铺满 |
+| UI | D7 提示语让人「先暂停再干预」，但暂停后 `IsRunning` 仍为真，照做依然被拒 | 文案改为「要手动干预请先『停止』」，并写明暂停只停队列 |
+| UI | D8 「按 10% 步进」被分组框裁掉、「两端对齐」复选框宽度不足 | 提示写进分组框标题；复选框宽度 62→76 |
+| 工程 | E3 `sources.rsp` / `selftest.rsp` 写死 `D:\Writer\InkPen\` 绝对路径，换机器即失败 | 全部改相对路径 |
+| 工程 | E4 源码是非 ASCII（UTF-8 无 BOM），csc 按系统代码页解析 | 两个 rsp 都加 `/codepage:65001` |
+| 工程 | E5 配置/宏/高度图直接覆写，断电会留下半截 JSON | `WriteAllTextAtomic`：临时文件 + `File.Replace`，失败退化为 `Copy` |
+| 工程 | E2 端口/波特率存了读不回来（`ApplyConfigToUi` 没回填） | 补回填 |
+
+### 回归验收
+
+| 环节 | 结果 |
+|---|---|
+| `build.bat`（csc 链） | PASS；`dist/InkPen.exe` |
+| `test.bat`（MSBuild + MSTest） | **160 / 160 全通过**（原 140 + 新增 20） |
+| `selftest.bat` | 9 作业 / 66 断言 / 10 份 `.nc`，`failed=0` |
+| `validate_gcode.py` | 10/10 PASS；`--selftest` 7/7 PASS |
+| `gui_check.bat all` | 4/4 PASS（冒烟 / 交互 / 配置 / 调平页） |
+| 注入验证（`docs/_audit/inject_verify.py`） | 13 组注入，全部命中 |
+
+### 注入验证清单
+
+通过标准是「指定那条用例必须红」，不是「测试仍绿」。
+
+| 注入 | 期望红的用例 |
+|---|---|
+| B1 抬笔不补偿 | `PenUp_TracksTiltedPaper_NotRawSafeZ` |
+| B5 续写前缀顺序颠倒 | `ResumePrefix_DeclaresUnitsBeforeAnyZMove` |
+| B6 续写不补落笔 | `ResumeIntoConnectedStroke_ReAppliesPenDownZ` |
+| A1 悬挂标点无上限 | `HangingPunctuation_CannotWalkOffThePaper` |
+| A3 对齐补量忽略缩进 | `JustifyWithFirstLineIndent_DoesNotOvershootRightMargin` |
+| A4 页底多扣一个字号 | `PageBottom_DoesNotWasteAnExtraFontHeight` |
+| A5 格线忽略缩进 | `GridIndent_SnapsToCellBoundary` |
+| A6 空格越界不换行 | `SpacesAtLineStart_CannotPushTextOffThePaper` |
+| A7 代理对拆成两个字 | `SurrogatePair_IsOneCharNotTwo` |
+| A8 缺字错误累积 | `Load_DoesNotAccumulateErrorsAcrossReloads` |
+| B4 小网格削峰 | `Smooth_KeepsSingleAxisTiltOnSmallGrid` |
+| C2 丢弃 WCO 换算 | `SetStatus_MposPlusWco_IsConvertedToWorkPosition` |
+| C8 迟到 PRB 错位记账 | `LatePrb_IsNotCreditedToTheNextPoint` |
+
+首轮注入并非全中：**A1 那条当时没红**——测试默认字库里只有「A」「我」，`。` 落进缺字分支只推进 `x` 不生成字形，`foreach` 遍历到 0 个元素，断言恒真。修法是给用例单独造含 `。` 的临时字库，并加一条 `Assert.AreEqual(15, count)` 钉住字形数量。**没有计数断言的「遍历每个元素都满足 P」，等于什么都没测。**
+
+### 未修（有意留下）
+
+- **E6 `selftest.rsp` 与 `sources.rsp` 清单漂移**：`selftest.rsp` 是逐文件列举，少列了 `ConfigBinder/GrblCore/PenTracker/ProbeRunner`。补进去要连带处理 `System.IO.Ports` 引用与 `selftest` 自身不引用 UI 的前提，风险大于收益（`test.bat` 已经覆盖这四个文件的编译）。**保持现状，但已写进 `docs/testing_pitfalls.md` 的检查项。**
+- **E7 版本号三处不一致**：已统一（见 `build/version.txt` / `AssemblyInfo.cs`），但 `dist/InkPen.exe` 的版本资源需重新构建才更新，不影响功能。
+
 ## 4. 本轮 SBOM 勘误（`NOTICE.md` / `README.md` / `LICENSES/ACKNOWLEDGEMENT.txt`）
 
 - **经典 Hershey ≠ SIL OFL 1.1**：为自带 USE RESTRICTION 的宽松许可（自由使用 + 致谢 + 禁转 U.S. NTIS 格式），既非 OFL 也非 GPL。OFL 1.1 仅覆盖未随本发行版提供的 29 个 EMS 现代衍生字体。

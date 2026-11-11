@@ -267,6 +267,10 @@ namespace InkPen.UI
             Button b = new Button();
             b.Text = text; b.Left = x; b.Top = y; b.Width = w; b.Height = h;
             b.Font = _ui;
+            // 默认 3px 内边距会白吃 6px 宽度。这里所有按钮都是手量尺寸的，
+            // 文案与宽度的余量本来就紧（「100%」「+50%」都在临界点上），
+            // 留着默认内边距就会静默裁掉尾巴。
+            b.Padding = new Padding(0);
             Theme.StyleButton(b, Color.White, Theme.Text, Theme.Border);
             p.Controls.Add(b); return b;
         }
@@ -328,7 +332,7 @@ namespace InkPen.UI
             _drawGrid = K(doc, "把格线写入 GCode（机器画出）", false, 10, 378, 262);
             _showGrid = K(doc, "画布显示格线", true, 10, 402, 120);
             _center = K(doc, "居中", false, 140, 402, 70);
-            _justify = K(doc, "两端对齐", false, 210, 402, 62);
+            _justify = K(doc, "两端对齐", false, 208, 402, 76);
 
             L(doc, "拉丁字体", 10, 432, 70);
             _latinFont = C(doc, new string[] { "latin.zip（工整）", "latin_script.zip（连笔）" }, 0, 85, 429, 180);
@@ -495,7 +499,10 @@ namespace InkPen.UI
             _droLbl.Font = Theme.Mono(9.2f, FontStyle.Regular);
             _droLbl.ForeColor = Color.FromArgb(40, 52, 68);
 
-            GroupBox jog = G(p, "手动 jog / 回零 / 进给倍率", 8, 270, 306, 196);
+            // 分组框宽 306 → 客户区 300。末排四个倍率按钮到 242 就用满了，「按 10% 步进」
+            // 只剩 54px 可用而文案要 69px，原本必被裁成「按 10%」——语义（是步进不是设定值）
+            // 恰恰丢在被裁掉的那半句上。改成写进标题，不给裁切留机会。
+            GroupBox jog = G(p, "手动 jog / 回零 / 进给倍率（±10% 步进）", 8, 270, 306, 196);
             L(jog, "步长", 8, 18, 32);
             _stepCombo = C(jog, new string[] { "0.1", "1", "5", "10", "50" }, 1, 40, 15, 58);
             // 十字方向键：上排 X− / Y+ / X+，下排居中 Y−。原来 Y− 和 X− X+ 挤在同一行，
@@ -510,21 +517,22 @@ namespace InkPen.UI
             _btnUnlock = B(jog, "$X 解锁", 80, 82, 68, 28);
             _btnZero = B(jog, "设原点", 152, 82, 62, 28);
             _btnPenTest = B(jog, "试笔", 218, 82, 78, 28);
-            _btnReset = B(jog, "软复位", 8, 116, 68, 28);
-            _btnEStop = Primary(B(jog, "急停", 80, 116, 68, 28), Theme.Danger);
-            _btnOvDown = B(jog, "倍率 −", 152, 116, 62, 28);
-            _btnOv100 = B(jog, "100%", 218, 116, 38, 28);
-            _btnOvUp = B(jog, "+", 258, 116, 38, 28);
+            _btnReset = B(jog, "软复位", 8, 116, 58, 28);
+            _btnEStop = Primary(B(jog, "急停", 70, 116, 58, 28), Theme.Danger);
+            _btnOvDown = B(jog, "倍率 −", 132, 116, 60, 28);
+            // 宽度 56 是与下面「+50%」同档的实测定值：46px 时渲染出来只剩「100」，
+            // 百分号被裁掉——「100」和「10」在本页同时存在，语义直接反转。
+            _btnOv100 = B(jog, "100%", 196, 116, 56, 28);
+            _btnOvUp = B(jog, "+", 256, 116, 38, 28);
             L(jog, "倍率", 8, 152, 36);
             _ovFine = new Button[4];
             int[] steps = new int[] { -50, -10, 10, 50 };
             for (int i = 0; i < 4; i++)
             {
                 _ovFine[i] = B(jog, (steps[i] > 0 ? "+" : "−") + Math.Abs(steps[i]) + "%",
-                               46 + i * 50, 148, 46, 26);
+                               46 + i * 60, 148, 56, 26);
                 _ovFine[i].Tag = steps[i];
             }
-            L(jog, "按 10% 步进", 248, 152, 56).ForeColor = Theme.TextDim;
 
             GroupBox mac = G(p, "宏按钮（双击编辑）", 8, 478, 306, 128);
             _macroBtn = new Button[4];
@@ -641,6 +649,11 @@ namespace InkPen.UI
             _rightTabs.TabPages.Add(p);
             L(p, "可直接编辑后从「机器」页开始书写；编辑内容优先于生成结果", 8, 8, 310).Height = 32;
             _gcodeBox = T(p, "", 8, 42, 306, 640, true);
+            // 只读：这是预览窗，不是编辑器。原来它是可编辑的，而发送与导出都读它的 Text，
+            // 一旦内容被 TextBox 的 MaxLength 或任何粘贴操作改动，就会「显示的」和「发出去的」
+            // 不是同一份东西——长稿甚至会静默丢掉大半页。权威数据源统一为 Job.GCode。
+            _gcodeBox.ReadOnly = true;
+            _gcodeBox.BackColor = Color.White;
             _gcodeBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _gcodeBox.Font = Theme.Mono(8.5f, FontStyle.Regular);
         }
@@ -651,7 +664,7 @@ namespace InkPen.UI
             p.BackColor = Color.White; p.Font = _ui;
             _rightTabs.TabPages.Add(p);
             _btnReadSettings = B(p, "读取 $$ 参数", 8, 8, 120, 28);
-            L(p, "双击数值可修改并回写 $n=value", 136, 12, 180);
+            L(p, "双击数值可修改并回写 $n=value", 136, 12, 190);
             _settingsGrid = new DataGridView();
             _settingsGrid.Left = 8; _settingsGrid.Top = 42;
             _settingsGrid.Width = 306; _settingsGrid.Height = 640;
