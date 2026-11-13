@@ -38,6 +38,8 @@
 |---|---|---|---|---|
 | 主程序（上游衍生） | GRBL-Plotter | GPL-3.0-or-later | `LICENSES/GPL-3.0.txt` | 算法骨架 |
 | 汉字笔顺主库 `mmah.zip` | `chanind/hanzi-writer-data` v2.0.1 / Make Me A Hanzi | **Arphic Public License** | `LICENSES/ARPHICPL.TXT`、中英文版 | 9574 字，带正确笔顺中心线 |
+| 楷体风格包 `kaiti.zip` | `LingDong-/chinese-hershey-font` STRK-Kaiti（全量） | **MIT** | `LICENSES/MIT-chinese-hershey-font.txt` | 20976 字，可选中文风格（笔画粗细分明的楷体） |
+| 明体风格包 `mingti.zip` | `LingDong-/chinese-hershey-font` STRK-Mingti | **MIT** | `LICENSES/MIT-chinese-hershey-font.txt` | 27632 字，可选中文风格（宋/明体，横细竖粗） |
 | 缺字回退 `fallback.zip` | `LingDong-/chinese-hershey-font` STRK-Kaiti | **MIT** | `LICENSES/MIT-chinese-hershey-font.txt` | 11442 个补缺字形（20976 总量中扣除主库已有） |
 | 拉丁/数字/标点 `latin*.zip` | 经典 Hershey 字形表（Futural / Scripts；自有宽松许可 / free use + acknowledgement），由离线工具读取 GRBL-Plotter C# 内嵌 `string[]` 转换 | **(a)** 数据 = 自带「致谢 / 禁转 NTIS 格式」USE RESTRICTION 的宽松许可（自由使用 + 致谢；**非 OFL、非 GPL**）；**(b)** SIL OFL 1.1 **仅**覆盖 29 个 EMS*.svg 现代衍生字体（**本项目不分发**）；**(c)** 内嵌该表的 GRBL-Plotter C# 源码容器 = GPL-3.0-or-later。详见下方拆解 | `LICENSES/ACKNOWLEDGEMENT.txt`（含逐字 USE RESTRICTION）、`LICENSES/OFL-1.1.txt`（仅作出处链记录，不覆盖随附数据） | 115 字形 |
 | 拼音声调 `pinyin.zip` | 本项目自造 | 自有 | — | 45 个预组合带调元音 |

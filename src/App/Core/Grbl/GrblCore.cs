@@ -75,6 +75,20 @@ namespace InkPen.Core
         public GrblStatus Status = new GrblStatus();
         public GrblSettings Settings = new GrblSettings();
         public string DetectedInfo = "";
+        /// <summary>固件报的机型名（$I 的 [MSG:Using machine:...]），例如 BACHIN-CoreXY。</summary>
+        public string MachineName = "";
+        /// <summary>CoreXY 运动学：X/Y 只能成对反向，单独反一个会让两个电机都动、走斜线。</summary>
+        public bool IsCoreXY
+        {
+            get
+            {
+                string n = (MachineName ?? "").Replace(" ", "");
+                return n.IndexOf("corexy", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("core-xy", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+        }
+        public Action<string> OnMachineInfo;
+
         public bool IsOpen { get { return _port != null && _port.IsOpen; } }
 
         public static string[] GetPorts()
@@ -144,6 +158,10 @@ namespace InkPen.Core
                 _port = null;
             }
             Status.State = GrblState.NotConnected;
+            // 机型名要跟着连接一起清：换一台别的机器接上来时，
+            // 残留的 "CoreXY" 会把方向面板锁死在「不可改」状态。
+            MachineName = "";
+            DetectedInfo = "";
             if (OnConnectionChanged != null) OnConnectionChanged(false);
         }
 
@@ -219,6 +237,19 @@ namespace InkPen.Core
                 {
                     Settings.Parse(line);
                     if (OnSettingsChanged != null) OnSettingsChanged();
+                }
+                else if (line.StartsWith("[MSG:Using machine:"))
+                {
+                    // $I 报的机型名。CoreXY 的运动学是 A=X+Y / B=X−Y，
+                    // 反转单个轴会破坏正交性——两个电机都动，笔走斜线，jog 完全失控。
+                    // 所以必须知道机型，才能在选择方向时给出正确的约束。
+                    int end = line.LastIndexOf(']');
+                    string name = end > 20
+                        ? line.Substring(20, end - 20)
+                        : line.Substring(20);
+                    MachineName = name.Trim();
+                    DetectedInfo += line + " ";
+                    if (OnMachineInfo != null) OnMachineInfo(MachineName);
                 }
                 else if (line.IndexOf("Grbl", StringComparison.OrdinalIgnoreCase) >= 0
                          || line.StartsWith("[VER:") || line.StartsWith("[OPT:"))

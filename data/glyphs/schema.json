@@ -40,6 +40,18 @@
       "source": "local .gfont import + hand-drawn",
       "license": "private, not distributed",
       "role": "user handwriting style"
+    },
+    "kaiti.zip": {
+      "source": "chinese-hershey-font STRK-Kaiti (full set)",
+      "license": "MIT",
+      "count": 20976,
+      "role": "selectable CJK style: kaiti"
+    },
+    "mingti.zip": {
+      "source": "chinese-hershey-font STRK-Mingti",
+      "license": "MIT",
+      "count": 27632,
+      "role": "selectable CJK style: mingti"
     }
   }
 }

@@ -15,7 +15,7 @@ if not exist "%OUT%\data\glyphs" mkdir "%OUT%\data\glyphs"
 REM local.zip is proprietary (imported from the local kdraw .gfont), machine-only.
 REM Default portable build includes it for THIS machine's own use.
 REM Set INKPEN_DISTRIBUTE=1 to produce a redistributable build WITHOUT local.zip.
-for %%F in (mmah.zip fallback.zip latin.zip latin_script.zip pinyin.zip schema.json) do (
+for %%F in (mmah.zip fallback.zip kaiti.zip mingti.zip latin.zip latin_script.zip pinyin.zip schema.json) do (
   copy /Y "%ROOT%\data\glyphs\%%F" "%OUT%\data\glyphs\" >nul
 )
 if "%INKPEN_DISTRIBUTE%"=="1" (

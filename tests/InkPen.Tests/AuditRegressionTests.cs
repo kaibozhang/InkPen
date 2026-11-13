@@ -542,5 +542,62 @@ namespace InkPen.Tests
             }
             finally { TestSupport.DeleteDir(empty); }
         }
+
+        // ---------- 字库风格：选中的中文主库必须真的排在最前 ----------
+
+        /// <summary>
+        /// 造两套笔画数不同的「我」：主库换了之后取到的字形必须跟着换。
+        /// 只断言 ChainNames 顺序不够——列表对但取字仍走旧包，写出来还是同一副字。
+        /// </summary>
+        [TestMethod]
+        public void CjkFont_SelectedPackActuallySuppliesTheGlyph()
+        {
+            string dir = TestSupport.CreateTempFontDir();   // 内含 mmah.zip（我 = 1 笔）
+            try
+            {
+                TestSupport.WritePack(Path.Combine(dir, "kaiti.zip"),
+                    new StrokeGlyph[]
+                    {
+                        TestSupport.Glyph('我', 1024, new double[] { 0, 0, 500, 0 })
+                    });
+
+                GlyphRepository fonts = new GlyphRepository();
+                string src;
+
+                fonts.Load(dir, true, "latin.zip", "kaiti.zip");
+                StrokeGlyph g = fonts.Get('我', out src);
+                Assert.IsNotNull(g);
+                Assert.AreEqual("kaiti.zip", src, "指定 kaiti.zip 后必须从它取字");
+                Assert.AreEqual(1, g.Strokes.Count, "取到的应是 kaiti.zip 的单笔字形");
+
+                fonts.Load(dir, true, "latin.zip", "mmah.zip");
+                g = fonts.Get('我', out src);
+                Assert.AreEqual("mmah.zip", src);
+                Assert.AreEqual(3, g.Strokes.Count, "换成 mmah.zip 后必须回到它的三笔字形");
+                fonts.Dispose();
+            }
+            finally { TestSupport.DeleteDir(dir); }
+        }
+
+        /// <summary>主库与固定回退链重名时不能把同一个 ZIP 打开两次。</summary>
+        [TestMethod]
+        public void CjkFont_SameAsBuiltinPack_AppearsOnlyOnce()
+        {
+            string dir = TestSupport.CreateTempFontDir();
+            try
+            {
+                TestSupport.WritePack(Path.Combine(dir, "local.zip"),
+                    new StrokeGlyph[] { TestSupport.GlyphA() });
+                GlyphRepository fonts = new GlyphRepository();
+                // preferLocal 与 cjkFont 同时指向 local.zip，是最容易重复打开的组合
+                fonts.Load(dir, true, "latin.zip", "local.zip");
+                string[] names = fonts.ChainNames;
+                int n = 0;
+                foreach (string s in names) if (s == "local.zip") n++;
+                Assert.AreEqual(1, n, "同一个包在回退链里只能出现一次");
+                fonts.Dispose();
+            }
+            finally { TestSupport.DeleteDir(dir); }
+        }
     }
 }

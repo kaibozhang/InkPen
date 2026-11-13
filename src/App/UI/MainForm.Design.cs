@@ -60,7 +60,7 @@ namespace InkPen.UI
 
         // 字库
         private ListBox _fontList;
-        private CheckBox _preferLocal;
+        private ComboBox _cjkFont;
         private Button _btnReloadFonts, _btnToggleFont;
 
         // 机器
@@ -100,12 +100,19 @@ namespace InkPen.UI
         private NumericUpDown _simSpeed;
 
         // GCode / 日志 / $ 参数
-        private TextBox _gcodeBox, _logBox;
+        private TextBox _gcodeBox;
+        private RichTextBox _logBox;
         private ToolStripButton _btnPlay, _btnSimPause, _btnSimStep, _btnSimStop, _btnFit, _btnZoomIn, _btnZoomOut;
         private ToolStripButton _btnPagePrev, _btnPageNext, _btnPenShow, _btnFollow;
         private ToolStripLabel _pageLbl;
         private DataGridView _settingsGrid;
+        private TextBox _settingsFilter;
         private Button _btnReadSettings;
+        private Button _btnLogClear;
+        private CheckBox _chkLogCommOnly;
+        private CheckBox _chkDirX, _chkDirY, _chkDirZ;
+        private Label _dirLbl, _dirHint;
+        private bool _dirSyncing;
 
         private Font UiFont()
         {
@@ -352,12 +359,14 @@ namespace InkPen.UI
 
             _fontLbl = L(font, "加载中…", 10, 10, 262);
             _fontLbl.Height = 46;
-            _preferLocal = K(font, "本机手写库优先（真人风格）", true, 10, 62, 262);
-            Section(font, "字库回退链", 10, 92, 200);
-            L(font, "双击可禁用 / 启用", 10, 112, 200).ForeColor = Theme.TextDim;
+            L(font, "中文风格", 10, 64, 70);
+            _cjkFont = C(font, new string[] { "加载中…" }, 0, 82, 60, 190);
+            L(font, "换风格后整页重排，已写内容不受影响", 10, 90, 262).ForeColor = Theme.TextDim;
+            Section(font, "字库回退链", 10, 112, 200);
+            L(font, "双击可禁用 / 启用", 10, 132, 200).ForeColor = Theme.TextDim;
             _fontList = new ListBox();
-            _fontList.Left = 10; _fontList.Top = 132; _fontList.Width = 262;
-            _fontList.Height = 130; _fontList.Font = _ui;
+            _fontList.Left = 10; _fontList.Top = 152; _fontList.Width = 262;
+            _fontList.Height = 110; _fontList.Font = _ui;
             _fontList.BorderStyle = BorderStyle.FixedSingle;
             font.Controls.Add(_fontList);
             _btnToggleFont = B(font, "启用 / 禁用选中字库", 10, 270, 150, 28);
@@ -469,6 +478,42 @@ namespace InkPen.UI
             BuildGCodeTab();
             BuildSettingsGridTab();
             BuildLogTab();
+
+            // 右栏实际宽度由 SplitContainer 决定（远超各页控件写死的 306），
+            // 但 Anchor 在 TabPage 上算的是「创建时的父尺寸」，页面从未被正确拉伸过：
+            // 参数表、日志、GCode 三个数据页右边一直空着一大块。改为显式布局。
+            _rightTabs.Resize += delegate { FitRightTab(); };
+            _rightTabs.SelectedIndexChanged += delegate { FitRightTab(); };
+        }
+
+        /// <summary>让右栏里的「数据展示型」页面铺满可用宽度。表单型页面（机器/调平/设置）保持左上角固定布局。</summary>
+        private void FitRightTab()
+        {
+            if (_rightTabs == null || _rightTabs.TabPages.Count == 0) return;
+            TabPage p = _rightTabs.SelectedTab;
+            if (p == null) return;
+            // 用 TabControl 的 DisplayRectangle 而不是 TabPage.ClientSize：
+            // 页面没被选中过时 ClientSize 还是默认值，按它算会把控件缩成一条。
+            Rectangle r = _rightTabs.DisplayRectangle;
+            int w = r.Width, h = r.Height;
+            if (w <= 40 || h <= 40) return;
+
+            if (_settingsGrid != null && _settingsGrid.Parent == p)
+            {
+                _settingsGrid.Width = Math.Max(180, w - 16);
+                _settingsGrid.Height = Math.Max(80, h - 72);
+                if (_settingsFilter != null) _settingsFilter.Width = Math.Max(80, w - 164);
+            }
+            if (_logBox != null && _logBox.Parent == p)
+            {
+                _logBox.Width = Math.Max(180, w - 16);
+                _logBox.Height = Math.Max(80, h - 48);
+            }
+            if (_gcodeBox != null && _gcodeBox.Parent == p)
+            {
+                _gcodeBox.Width = Math.Max(180, w - 16);
+                _gcodeBox.Height = Math.Max(80, h - 50);
+            }
         }
 
         private void BuildMachineTab()
@@ -515,7 +560,7 @@ namespace InkPen.UI
             _btnJogZm = B(jog, "Z−", 240, 46, 54, 26);
             _btnHome = B(jog, "$H 回零", 8, 82, 68, 28);
             _btnUnlock = B(jog, "$X 解锁", 80, 82, 68, 28);
-            _btnZero = B(jog, "设原点", 152, 82, 62, 28);
+            _btnZero = B(jog, "XY 零点", 152, 82, 64, 28);
             _btnPenTest = B(jog, "试笔", 218, 82, 78, 28);
             _btnReset = B(jog, "软复位", 8, 116, 58, 28);
             _btnEStop = Primary(B(jog, "急停", 70, 116, 58, 28), Theme.Danger);
@@ -534,7 +579,7 @@ namespace InkPen.UI
                 _ovFine[i].Tag = steps[i];
             }
 
-            GroupBox mac = G(p, "宏按钮（双击编辑）", 8, 478, 306, 128);
+            GroupBox mac = G(p, "宏按钮（双击编辑）", 8, 618, 306, 128);
             _macroBtn = new Button[4];
             for (int i = 0; i < 4; i++)
             {
@@ -545,7 +590,7 @@ namespace InkPen.UI
             _btnMacroEdit = B(mac, "编辑当前宏…", 8, 86, 145, 26);
             _btnMacroReset = B(mac, "恢复默认宏", 160, 86, 138, 26);
 
-            GroupBox send = G(p, "书写任务", 8, 616, 306, 150);
+            GroupBox send = G(p, "书写任务", 8, 754, 306, 150);
             _btnStart = Primary(B(send, "▶ 开始书写", 8, 18, 90, 30), Theme.Ok);
             _btnSendPause = B(send, "暂停", 102, 18, 60, 30);
             _btnSendResume = B(send, "继续", 166, 18, 60, 30);
@@ -557,6 +602,20 @@ namespace InkPen.UI
             _btnSendCmd = B(send, "发送", 240, 90, 56, 30);
             _customCmd = T(send, "", 8, 124, 288, 22, false);
             L(send, "自定义指令", 136, 94, 96);
+
+            // 电机方向：直接读写 $3 的位掩码（X=1 / Y=2 / Z=4）。
+            // 方向反了正确的做法是改 $3，不是重插电机线：换线之后限位开关、
+            // 归零方向、手动 jog 的语义会一起反过来，下一次归零更容易撞。
+            // 放在 jog 正下方——方向不对就是点 jog 时发现的，别让人往下翻半天。
+            GroupBox dir = G(p, "电机方向（写 $3，立即生效并存 EEPROM）", 8, 478, 306, 132);
+            _chkDirX = K(dir, "X 反向", false, 10, 26, 92);
+            _chkDirY = K(dir, "Y 反向", false, 10, 52, 92);
+            _chkDirZ = K(dir, "Z 反向", false, 10, 78, 92);
+            _dirLbl = L(dir, "$3 = —", 110, 28, 186);
+            _dirLbl.Font = Theme.Mono(9.2f, FontStyle.Bold);
+            _dirHint = L(dir, "勾选立即生效。坐标读数不会跳变，\n只有之后的移动方向反过来。", 110, 54, 186);
+            _dirHint.Height = 60;
+            _dirHint.ForeColor = Theme.TextDim;
         }
 
         private void BuildLevelTab()
@@ -663,23 +722,43 @@ namespace InkPen.UI
             TabPage p = new TabPage("$ 参数");
             p.BackColor = Color.White; p.Font = _ui;
             _rightTabs.TabPages.Add(p);
-            _btnReadSettings = B(p, "读取 $$ 参数", 8, 8, 120, 28);
-            L(p, "双击数值可修改并回写 $n=value", 136, 12, 190);
+            _btnReadSettings = B(p, "读取 $$ 参数", 8, 8, 108, 28);
+            L(p, "筛选", 116, 13, 34).ForeColor = Theme.TextDim;
+            _settingsFilter = T(p, "", 156, 9, 158, 24, false);
+            _settingsFilter.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            L(p, "双击「值」可改并回写", 8, 40, 160).ForeColor = Theme.TextDim;
+
             _settingsGrid = new DataGridView();
-            _settingsGrid.Left = 8; _settingsGrid.Top = 42;
-            _settingsGrid.Width = 306; _settingsGrid.Height = 640;
+            _settingsGrid.Left = 8; _settingsGrid.Top = 64;
+            _settingsGrid.Width = 306; _settingsGrid.Height = 618;
             _settingsGrid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _settingsGrid.AllowUserToAddRows = false;
             _settingsGrid.AllowUserToDeleteRows = false;
+            _settingsGrid.AllowUserToResizeRows = false;
             _settingsGrid.ReadOnly = true;
+            // 行头（那个空白列）默认有 43px 宽，把「说明」列整个挤出可视区，
+            // 于是 46 项参数里凡是需要文字解释的都看不全——而这一页的全部价值就是那些解释。
+            _settingsGrid.RowHeadersVisible = false;
+            _settingsGrid.ScrollBars = ScrollBars.Both;
+            _settingsGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            _settingsGrid.MultiSelect = false;
             _settingsGrid.ColumnCount = 3;
+            _settingsGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            _settingsGrid.ColumnHeadersHeight = 26;
+            _settingsGrid.RowTemplate.Height = 22;
             _settingsGrid.ColumnHeadersDefaultCellStyle.BackColor = Theme.CardBg;
+            _settingsGrid.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.False;
             _settingsGrid.Columns[0].Name = "参数";
-            _settingsGrid.Columns[0].Width = 62;
+            _settingsGrid.Columns[0].Width = 52;
+            _settingsGrid.Columns[0].SortMode = DataGridViewColumnSortMode.NotSortable;
             _settingsGrid.Columns[1].Name = "值";
-            _settingsGrid.Columns[1].Width = 86;
+            _settingsGrid.Columns[1].Width = 74;
+            _settingsGrid.Columns[1].SortMode = DataGridViewColumnSortMode.NotSortable;
             _settingsGrid.Columns[2].Name = "说明";
-            _settingsGrid.Columns[2].Width = 150;
+            // 说明列吃掉剩余宽度，窗口拉宽时跟着变宽（原来固定 150，窄窗口下被行头挤掉）
+            _settingsGrid.Columns[2].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+            _settingsGrid.DefaultCellStyle.WrapMode = DataGridViewTriState.False;
+            _settingsGrid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(250, 251, 253);
             _settingsGrid.Font = _ui;
             _settingsGrid.BackgroundColor = Color.White;
             _settingsGrid.BorderStyle = BorderStyle.FixedSingle;
@@ -691,11 +770,30 @@ namespace InkPen.UI
             TabPage p = new TabPage("日志");
             p.BackColor = Color.White; p.Font = _ui;
             _rightTabs.TabPages.Add(p);
-            _logBox = T(p, "", 8, 8, 306, 674, true);
+
+            // 日志原来是纯 TextBox 单色：TX / RX / 错误 / 自身提示全是一个颜色，
+            // 调试串口时要在几百行里靠肉眼找「哪句是发出去的、哪句是板子回的」。
+            // 改用 RichTextBox 按来源上色——这不是美化，是让异常一眼可见。
+            _btnLogClear = B(p, "清空", 8, 8, 56, 26);
+            _chkLogCommOnly = K(p, "只看通信", false, 72, 11, 92);
+            L(p, "红=错误 / 绿=ok", 200, 14, 110).ForeColor = Theme.TextDim;
+
+            _logBox = new RichTextBox();
+            _logBox.Left = 8; _logBox.Top = 40;
+            _logBox.Width = 306; _logBox.Height = 642;
             _logBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _logBox.Font = Theme.Mono(8.5f, FontStyle.Regular);
             _logBox.ReadOnly = true;
             _logBox.BackColor = Theme.CardBg;
+            // 浅灰底 + 细边框：RichTextBox 默认的 Fixed3D 凹陷边框在深色画布旁边很突兀，
+            // 而完全不画边框时整块白色区域看不出边界。
+            _logBox.BorderStyle = BorderStyle.FixedSingle;
+            // 不允许用户改字体宽度，否则列对不齐（TX/RX 缩进靠等宽字体撑住）
+            _logBox.DetectUrls = false;
+            _logBox.WordWrap = true;
+            _logBox.ScrollBars = RichTextBoxScrollBars.Vertical;
+            _logBox.ShortcutsEnabled = true;
+            p.Controls.Add(_logBox);
         }
     }
 }

@@ -26,6 +26,7 @@ namespace InkPen.UI
         /// <summary>本次作业在整份 GCode 中的起始行。流控的 Sent 是「相对续写起点」的，
         /// 笔跟踪与错误行号都要加上它才是绝对行号。</summary>
         private int _sendBaseLine = 0;
+        private bool _alarmLogged = false;
         private bool _legacyJog = false;
         private bool _loading = false;
 
@@ -90,6 +91,7 @@ namespace InkPen.UI
             LoadConfig(false);
             LoadMacros();
             LoadHeightMapFile(false);
+            FillCjkStyles();
             ApplyConfigToUi();
             LoadFonts();
             RefreshPorts();
@@ -97,6 +99,9 @@ namespace InkPen.UI
             RefreshSettingsGrid();
             Generate();     // 首屏直接出预览，避免打开后中栏空白、用户以为没生效
             ApplyStartupTab();
+            // 构造阶段 TabControl 还没有最终尺寸，必须等窗口真正显示后再量一次，
+            // 否则右栏那几个数据页会停在 306px 的初始宽度。
+            Shown += delegate { FitRightTab(); };
             Log("InkPen 启动完成。数据目录: " + _dataDir);
             Log("提示：先离线仿真 + GCode 静态校验，Z 参数标定后再接真机。");
         }
@@ -119,7 +124,16 @@ namespace InkPen.UI
             _center.CheckedChanged += delegate { ScheduleGenerate(); };
             _justify.CheckedChanged += delegate { ScheduleGenerate(); };
             _latinFont.SelectedIndexChanged += delegate { LoadFonts(); ScheduleGenerate(); };
-            _preferLocal.CheckedChanged += delegate { LoadFonts(); ScheduleGenerate(); };
+            _cjkFont.SelectedIndexChanged += delegate
+            {
+                if (_cjkFilling) return;
+                _tpl.CjkFont = SelectedCjk();
+                _cfg.PreferLocalFont = _tpl.CjkFont == "local.zip";
+                LoadFonts();
+                ScheduleGenerate();
+                SaveConfig();       // 风格是显式选择，立刻落盘，重启后不丢
+                Log("中文风格切换为 " + _tpl.CjkFont);
+            };
             _btnReloadFonts.Click += delegate { LoadFonts(); ScheduleGenerate(); };
             _btnToggleFont.Click += delegate { ToggleFont(); };
             _fontList.DoubleClick += delegate { ToggleFont(); };
@@ -223,7 +237,18 @@ namespace InkPen.UI
             // 也会让它们返回的 ok 被流控当成某条 GCode 行的 ack，导致计数提前释放、静默丢行。
             _btnHome.Click += delegate { SendGuarded("$H", "回零"); };
             _btnUnlock.Click += delegate { SendGuarded("$X", "解锁"); };
-            _btnZero.Click += delegate { SendGuarded("G10 L20 P1 X0 Y0 Z0", "设原点"); };
+            // 只清 X/Y，不清 Z。
+            // Z 零点是在「笔尖刚好触纸」时标定出来的独立基准，XY 零点则在纸的角上。
+            // 两者几乎不会在同一时刻定：抬着笔去对 XY 时若连 Z 一起清零，Z 零点就变成了
+            // 「抬起 2.5 mm 的位置」，此后 书写 Z=-0.15 永远够不到纸 —— 机器照常在动、
+            // 日志全绿、纸上什么也没有。这类错误没有报错，只能靠人猜。
+            // 需要重定 Z 零点时用自定义指令 G10 L20 P1 Z0（笔尖触纸状态下发）。
+            _btnZero.Click += delegate
+            {
+                if (!SendGuarded("G10 L20 P1 X0 Y0", "设 XY 原点")) return;
+                Log("XY 原点已设在笔当前位置；Z 零点保持不变。"
+                  + "需重定 Z 零点时，在笔尖触纸状态下用自定义指令 G10 L20 P1 Z0。");
+            };
             _btnReset.Click += delegate { _grbl.SendRealtime(0x18); };
             _btnEStop.Click += delegate { _stream.EmergencyStop(); };
             _btnOv100.Click += delegate { _grbl.SendRealtime(0x90); };
@@ -334,22 +359,48 @@ namespace InkPen.UI
 
             // $ 参数
             _btnReadSettings.Click += delegate { SendGuarded("$$", "读取参数"); };
+            _settingsFilter.TextChanged += delegate { RefreshSettingsGrid(); };
             _settingsGrid.CellDoubleClick += delegate(object s, DataGridViewCellEventArgs e)
             {
                 if (e.RowIndex < 0) return;
+                // 单元格里存的已经是带 $ 的「$132」，别再拼一个 $——之前拼成 "$$132=x"，
+                // GRBL 会回 error:3（未知指令），而界面上只看到一行「写入 $$132=...」。
                 object id = _settingsGrid.Rows[e.RowIndex].Cells[0].Value;
                 object val = _settingsGrid.Rows[e.RowIndex].Cells[1].Value;
                 if (id == null) return;
+                string key = id.ToString();
                 string input = val == null ? "" : val.ToString();
-                if (ShowInput("$" + id + " =", ref input) == DialogResult.OK)
+                if (ShowInput(key + " =", ref input) == DialogResult.OK)
                 {
-                    SendGuarded("$" + id + "=" + input.Replace(",", "."), "写参数");
-                    Log("写入 $" + id + "=" + input);
+                    SendGuarded(key + "=" + input.Replace(",", "."), "写参数");
+                    Log("写入 " + key + "=" + input);
                 }
             };
 
+            // 电机方向：勾选即写 $3，不重插电机线
+            _chkDirX.CheckedChanged += delegate { OnDirChanged(_chkDirX); };
+            _chkDirY.CheckedChanged += delegate { OnDirChanged(_chkDirY); };
+            _chkDirZ.CheckedChanged += delegate { OnDirChanged(_chkDirZ); };
+
+            // 日志页
+            if (_btnLogClear != null)
+                _btnLogClear.Click += delegate { _logBox.Clear(); };
+            // 「只看通信」只影响之后追加的行：已经渲染进 RichTextBox 的内容无法回溯过滤，
+            // 与其假装能筛（用户会以为日志少了），不如老实说「从勾选起生效」。
+            if (_chkLogCommOnly != null)
+                _chkLogCommOnly.CheckedChanged += delegate
+                {
+                    if (_chkLogCommOnly.Checked)
+                        _logBox.AppendText("\n—— 只显示通信与错误（自此刻起）——\n");
+                    else
+                        _logBox.AppendText("\n—— 恢复显示全部（自此刻起）——\n");
+                    _logBox.SelectionStart = _logBox.TextLength;
+                    _logBox.ScrollToCaret();
+                };
+
             // GRBL 事件
             _grbl.OnLog += delegate(string s) { Log(s); };
+            _grbl.OnMachineInfo += delegate(string name) { Ui(delegate { UpdateDirLock(); }); };
             _grbl.OnError += delegate(string s) { Log("!! " + s); };
             _grbl.OnConnectionChanged += delegate(bool open)
             {
@@ -365,6 +416,7 @@ namespace InkPen.UI
                         _settingsGrid.Rows.Clear();
                         _grbl.Settings.Values.Clear();
                         _canvas.ClearRealtime();
+                        ApplyDirFromSettings();   // 三个方向框回到「未连接」态，别留着上一台机器的值
                         ScheduleReconnect();
                     }
                     else
@@ -460,6 +512,18 @@ namespace InkPen.UI
             _droLbl.Text = xyz + "\n" + st.State
                          + " | MPos " + (st.HasMPos ? st.MX.ToString("F1") + "," + st.MY.ToString("F1") : "—")
                          + " | Bf " + st.BufferFree + " | Ov " + st.FeedOverride + "%";
+            // Alarm 是「机器已停机、什么都不肯动」的状态，和 Idle 长得一样会让人反复点按钮试。
+            // 用红色把这一行钉住，再在日志里留一条（同一次 Alarm 只记一条）。
+            bool alarm = st.State == GrblState.Alarm;
+            _droLbl.ForeColor = alarm
+                ? Color.FromArgb(196, 52, 44)
+                : Theme.TextDim;
+            if (alarm && !_alarmLogged)
+            {
+                _alarmLogged = true;
+                Log("!! 控制器进入 ALARM：电机已停止输出。先排除撞机/断线，再点「$X 解锁」。");
+            }
+            else if (!alarm) _alarmLogged = false;
 
             _bar.Connected = _grbl.IsOpen;
             _bar.GrblState = st.State.ToString();
@@ -564,11 +628,137 @@ namespace InkPen.UI
 
         private void Log(string s)
         {
-            Ui(delegate
+            Ui(delegate { AppendLog(s); });
+        }
+
+        // ---------- 电机方向（$3 位掩码：X=1 / Y=2 / Z=4） ----------
+
+        private static string DirWord(bool invert) { return invert ? "反" : "正"; }
+
+        /// <summary>
+        /// 把 $3 的位掩码刷到三个复选框上。
+        /// 程序改 Checked 本身会再触发 CheckedChanged，用 _dirSyncing 挡住这个回环——
+        /// 否则每次读参数都会「顺手」把值再写一遍 GRBL。
+        /// </summary>
+        /// <summary>CoreXY 时锁住 X/Y 两个勾选框并改写提示。机型信息可能晚于 $$ 到达，单独抽出来便于两处调用。</summary>
+        private void UpdateDirLock()
+        {
+            if (_chkDirX == null) return;
+            bool corexy = _grbl.IsCoreXY;
+            _chkDirX.Enabled = !corexy;
+            _chkDirY.Enabled = !corexy;
+            if (_dirHint != null)
             {
-                if (_logBox.TextLength > 120000) _logBox.Text = _logBox.Text.Substring(_logBox.TextLength - 60000);
-                _logBox.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + s + "\n");
-            });
+                _dirHint.Text = corexy
+                    ? "CoreXY 机型：X/Y 由两台电机协同，\n$3 的 X/Y 位是电机转向修正，\n单独改一个会让笔走斜线。\n纸面方向请改用「纸张与坐标」的原点角。"
+                    : "勾选立即生效。坐标读数不会跳变，\n只有之后的移动方向反过来。";
+                _dirHint.ForeColor = corexy ? Color.FromArgb(168, 104, 30) : Theme.TextDim;
+            }
+        }
+
+        private void ApplyDirFromSettings()
+        {
+            if (_chkDirX == null) return;
+            double dv;
+            bool has = _grbl.Settings.Values.TryGetValue(3, out dv);
+            int v = has ? (int)Math.Round(dv) : 0;
+
+            // CoreXY：X/Y 由两台电机协同（A=X+Y, B=X−Y）。$3 的 X/Y 位在这类机器上
+            // 实际反的是「电机 A/B 的转向修正」，不是轴的方向。单独翻一个位会破坏
+            // A/B 的正交关系——点 X+ 时两个电机都动，笔走斜线，看起来像"全乱"。
+            // 厂家给的 $3 是配平后的值，不能动；纸面朝向要靠「原点角」解决。
+            bool corexy = _grbl.IsCoreXY;
+            UpdateDirLock();
+
+            _dirSyncing = true;
+            _chkDirX.Checked = (v & 1) != 0;
+            _chkDirY.Checked = (v & 2) != 0;
+            _chkDirZ.Checked = (v & 4) != 0;
+            _dirLbl.Text = has
+                ? "$3 = " + v + "   X" + DirWord(_chkDirX.Checked)
+                  + " Y" + DirWord(_chkDirY.Checked) + " Z" + DirWord(_chkDirZ.Checked)
+                  + (corexy ? "  [" + _grbl.MachineName + "]" : "")
+                : "$3 = —（未连接）";
+            _dirSyncing = false;
+        }
+
+        private void OnDirChanged(CheckBox src)
+        {
+            if (_dirSyncing || _chkDirX == null) return;
+
+            // CoreXY 上 X/Y 不可单独改：禁用只是第一道闸，这里再挡一次，
+            // 防止将来有人把 Enabled 改回来又踩同一个坑。
+            if (_grbl.IsCoreXY && (src == _chkDirX || src == _chkDirY))
+            {
+                Log("!! CoreXY 机型不能单独改 X/Y 转向（$3 的这两位是电机 A/B 的配对修正）。"
+                    + "纸面左右/上下反了请改「纸张与坐标」的原点角。");
+                ApplyDirFromSettings();
+                return;
+            }
+
+            int v = (_chkDirX.Checked ? 1 : 0) | (_chkDirY.Checked ? 2 : 0) | (_chkDirZ.Checked ? 4 : 0);
+            if (!SendGuarded("$3=" + v, "改电机方向"))
+            {
+                // 发送被拒（书写中 / 未连接）：勾选回滚成机器里真正生效的值，
+                // 否则界面显示的方向和机器实际方向不一致，下一个 jog 就会撞。
+                ApplyDirFromSettings();
+                return;
+            }
+            _grbl.Settings.Values[3] = v;
+            _dirLbl.Text = "$3 = " + v + "   X" + DirWord(_chkDirX.Checked)
+                         + " Y" + DirWord(_chkDirY.Checked) + " Z" + DirWord(_chkDirZ.Checked);
+            Log("电机方向已改为 $3=" + v
+                + "（X" + DirWord(_chkDirX.Checked) + " Y" + DirWord(_chkDirY.Checked)
+                + " Z" + DirWord(_chkDirZ.Checked) + "）。坐标读数不变，"
+                + "此后 jog 的移动方向已反过来。");
+        }
+
+        /// <summary>日志按来源上色。调试串口时最需要一眼分清「我发的」「板子回的」「出错了」。</summary>
+        private void AppendLog(string s)
+        {
+            if (_logBox == null || s == null) return;
+            // 「只看通信」勾上时丢掉自身提示（启动信息、按钮反馈），只留 TX/RX 与错误
+            bool comm = s.StartsWith("TX ") || s.StartsWith("RX ")
+                        || s.StartsWith("!! ") || IsErrorLine(s);
+            if (_chkLogCommOnly != null && _chkLogCommOnly.Checked && !comm) return;
+
+            // 超长裁剪：直接砍掉头部 40% 的字符。RichTextBox 无法按行裁剪，
+            // 但丢字符比手机内存被日志吃干净要好；旧的纯文本版本也是这么做的。
+            if (_logBox.TextLength > 200000)
+            {
+                _logBox.Select(0, 80000);
+                _logBox.SelectedText = "";
+            }
+
+            int at = _logBox.TextLength;
+            _logBox.SelectionStart = at;
+            _logBox.SelectionLength = 0;
+            _logBox.SelectionColor = Color.FromArgb(150, 158, 170);
+            _logBox.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  ");
+            _logBox.SelectionColor = LogColor(s, comm);
+            _logBox.AppendText(s + "\n");
+            _logBox.SelectionLength = 0;
+            _logBox.SelectionStart = _logBox.TextLength;
+            _logBox.ScrollToCaret();
+        }
+
+        private static bool IsErrorLine(string s)
+        {
+            if (s.IndexOf("error:", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (s.IndexOf("ALARM", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (s.IndexOf("失败", StringComparison.Ordinal) >= 0) return true;
+            if (s.IndexOf("Exception", StringComparison.Ordinal) >= 0) return true;
+            return false;
+        }
+
+        private static Color LogColor(string s, bool comm)
+        {
+            if (IsErrorLine(s)) return Color.FromArgb(196, 52, 44);
+            if (s.StartsWith("!! ")) return Color.FromArgb(196, 52, 44);
+            if (s == "ok" || s.StartsWith("ok ")) return Color.FromArgb(34, 132, 82);
+            if (s.StartsWith("TX ")) return Color.FromArgb(40, 86, 168);
+            if (s.StartsWith("RX ")) return Color.FromArgb(72, 82, 98);
+            return Color.FromArgb(48, 54, 64);
         }
 
         /// <summary>把 --tab=xxx 映射到右栏标签页序号；名字不认识就保持默认，不抛异常。</summary>
@@ -577,7 +767,14 @@ namespace InkPen.UI
             if (string.IsNullOrEmpty(StartupTab)) return;
             string[] names = new string[] { "machine", "level", "settings", "gcode", "params", "log" };
             int idx = Array.IndexOf(names, StartupTab.ToLowerInvariant());
-            if (idx >= 0 && idx < _rightTabs.TabPages.Count) _rightTabs.SelectedIndex = idx;
+            if (idx >= 0 && idx < _rightTabs.TabPages.Count) { _rightTabs.SelectedIndex = idx; return; }
+
+            // 左栏：截图/自动化检查需要能直接落到「字库」这类页面（TabPage 懒加载，
+            // 没显示过的页在控件树里查不到）。
+            string[] leftNames = new string[] { "doc", "font" };
+            int li = Array.IndexOf(leftNames, StartupTab.ToLowerInvariant());
+            if (li >= 0 && _leftTabs != null && li < _leftTabs.TabPages.Count)
+                _leftTabs.SelectedIndex = li;
         }
 
         private void UpdatePageLabel()
@@ -621,7 +818,8 @@ namespace InkPen.UI
             _cfg.Seed = (int)_seed.Value;
             _cfg.StartGCode = _startGc.Text;
             _cfg.EndGCode = _endGc.Text;
-            _cfg.PreferLocalFont = _preferLocal.Checked;
+            _tpl.CjkFont = SelectedCjk();
+            _cfg.PreferLocalFont = _tpl.CjkFont == "local.zip";
             _cfg.JitterSize = _jSize.Value / 1000.0;
             _cfg.JitterPosMm = _jPos.Value / 100.0;
             _cfg.JitterStrokeMm = _jStroke.Value / 100.0;
@@ -655,7 +853,7 @@ namespace InkPen.UI
             _center.Checked = _tpl.CenterVertically;
             _justify.Checked = _tpl.Justify;
             _latinFont.SelectedIndex = _tpl.LatinFont == "latin_script.zip" ? 1 : 0;
-            _preferLocal.Checked = _cfg.PreferLocalFont;
+            SelectCjk(_tpl.CjkFont);
 
             _paperW.Value = (decimal)Clamp(_cfg.PaperWidthMm, 50, 1000);
             _paperH.Value = (decimal)Clamp(_cfg.PaperHeightMm, 50, 1000);
@@ -766,12 +964,59 @@ namespace InkPen.UI
         }
 
         // ---------- 字库 ----------
+        /// <summary>中文主库选项：显示名 → ZIP 文件名。只列出磁盘上真实存在的包。</summary>
+        private class CjkChoice
+        {
+            public readonly string Label, File;
+            public CjkChoice(string label, string file) { Label = label; File = file; }
+            public override string ToString() { return Label; }
+        }
+
+        private readonly CjkChoice[] _cjkAll = new CjkChoice[]
+        {
+            new CjkChoice("手写（本机库）", "local.zip"),
+            new CjkChoice("单线（笔顺序）", "mmah.zip"),
+            new CjkChoice("楷体", "kaiti.zip"),
+            new CjkChoice("明体", "mingti.zip"),
+        };
+        private bool _cjkFilling;
+
+        private void FillCjkStyles()
+        {
+            string dir = Path.Combine(_dataDir, "glyphs");
+            _cjkFilling = true;
+            _cjkFont.Items.Clear();
+            foreach (CjkChoice c in _cjkAll)
+                if (File.Exists(Path.Combine(dir, c.File))) _cjkFont.Items.Add(c);
+            _cjkFilling = false;
+        }
+
+        private void SelectCjk(string file)
+        {
+            _cjkFilling = true;
+            int idx = 0;
+            for (int i = 0; i < _cjkFont.Items.Count; i++)
+            {
+                CjkChoice c = _cjkFont.Items[i] as CjkChoice;
+                if (c != null && c.File == file) { idx = i; break; }
+            }
+            if (_cjkFont.Items.Count > 0) _cjkFont.SelectedIndex = idx;
+            _cjkFilling = false;
+        }
+
+        private string SelectedCjk()
+        {
+            CjkChoice c = _cjkFont.SelectedItem as CjkChoice;
+            return c == null ? _tpl.CjkFont : c.File;
+        }
+
         private void LoadFonts()
         {
             try
             {
-                _fonts.Load(Path.Combine(_dataDir, "glyphs"), _preferLocal.Checked,
-                            _latinFont.SelectedIndex == 1 ? "latin_script.zip" : "latin.zip");
+                _fonts.Load(Path.Combine(_dataDir, "glyphs"), _cfg.PreferLocalFont,
+                            _latinFont.SelectedIndex == 1 ? "latin_script.zip" : "latin.zip",
+                            _tpl.CjkFont);
                 // Load() 会重建 pack 并把 Enabled 复位，需重新应用用户的禁用选择
                 foreach (string n in _disabledFonts) _fonts.SetEnabled(n, false);
                 _fontLbl.Text = "有效覆盖 " + _fonts.Count + " 个码点\n" + _fonts.PackInfo();
@@ -963,11 +1208,25 @@ namespace InkPen.UI
         {
             if (!_grbl.IsOpen) { Log("未连接，无法试笔"); return; }
             if (ManualBlocked()) return;
-            _grbl.SendCommand("G0 Z" + GCodeBuilder.F(_cfg.SafeZ));
-            _grbl.SendCommand("G1 Z" + GCodeBuilder.F(_cfg.WriteZ) + " F" + GCodeBuilder.F(_cfg.ZFeed));
+
+            // 先把界面上的数字回写进 _cfg。ApplyUiToConfig() 平时挂在 300ms 防抖定时器上，
+            // 而「标定时改完数字立刻点试笔」几乎必然抢在防抖之前 —— 用的还是上一次的 Z，
+            // 于是用户看到的是「我明明改了，试笔却没变化」，却没有任何提示。
+            ApplyUiToConfig();
+
+            double safe = _cfg.SafeZ, write = _cfg.WriteZ;
+            _grbl.SendCommand("G0 Z" + GCodeBuilder.F(safe));
+            _grbl.SendCommand("G1 Z" + GCodeBuilder.F(write) + " F" + GCodeBuilder.F(_cfg.ZFeed));
             _grbl.SendCommand("G4 P0.5");
-            _grbl.SendCommand("G0 Z" + GCodeBuilder.F(_cfg.SafeZ));
-            Log("试笔：抬→落→停 0.5s→抬。请确认笔尖接触与 Z 方向。");
+            _grbl.SendCommand("G0 Z" + GCodeBuilder.F(safe));
+
+            // 把实际发的数字写进日志。原来只说「抬→落→停→抬」，标定出问题时
+            // 无法判断到底用的是哪个 Z，只能靠猜。
+            Log("试笔：抬 Z" + GCodeBuilder.F(safe) + " → 落 Z" + GCodeBuilder.F(write)
+                + " → 停 0.5s → 抬 Z" + GCodeBuilder.F(safe));
+            if (write >= 0)
+                Log("提示：书写 Z ≥ 0 表示笔尖只触及纸面、没有压力，多数笔不会出墨。"
+                  + "要留下可视痕迹请填负值（如 -0.15）。");
         }
 
         // ---------- 宏按钮（A4） ----------
@@ -1451,13 +1710,22 @@ namespace InkPen.UI
                 List<int> ids = new List<int>(_grbl.Settings.Values.Keys);
                 if (ids.Count == 0) return;
                 ids.Sort();
+                string q = _settingsFilter == null ? "" : _settingsFilter.Text.Trim();
                 _settingsGrid.Rows.Clear();
+                int shown = 0;
                 foreach (int id in ids)
                 {
+                    string name = SettingName(id);
+                    if (q.Length > 0
+                        && ("$" + id).IndexOf(q, StringComparison.OrdinalIgnoreCase) < 0
+                        && name.IndexOf(q, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
                     _settingsGrid.Rows.Add("$" + id,
-                        GCodeBuilder.F(_grbl.Settings.Values[id]), SettingName(id));
+                        GCodeBuilder.F(_grbl.Settings.Values[id]), name);
+                    shown++;
                 }
-                Log("$ 参数已刷新：" + ids.Count + " 项（双击「值」可修改并回写）");
+                Log("$ 参数已刷新：" + shown + "/" + ids.Count + " 项（双击「值」可修改并回写）");
+                ApplyDirFromSettings();
             }
             catch (Exception ex) { Log("刷新 $ 参数失败: " + ex.Message); }
         }

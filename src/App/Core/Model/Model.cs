@@ -73,6 +73,11 @@ namespace InkPen.Core
         public bool Justify = false;
 
         public string LatinFont = "latin.zip";  // latin.zip / latin_script.zip
+
+        // 中文主库（风格）。回退链的第一位，取不到的字才往后落。
+        // 之前没有任何入口能改这个顺序，链固定为 local → mmah，而 mmah 覆盖最广，
+        // 于是无论字库目录里放了几套风格，写出来永远是同一副面孔。
+        public string CjkFont = "local.zip";
     }
 
     public class MachineConfig

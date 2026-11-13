@@ -58,11 +58,24 @@ namespace InkPen.Core
 
         public void Load(string dir, bool preferLocal, string latinFont)
         {
+            Load(dir, preferLocal, latinFont, null);
+        }
+
+        /// <summary>
+        /// cjkFont 指定中文主库（风格），为空时退回旧规则（preferLocal ? local : mmah）。
+        /// 主库只影响「谁先命中」；其余包仍按原顺序兜底，缺字的字不会因为换了风格而消失。
+        /// </summary>
+        public void Load(string dir, bool preferLocal, string latinFont, string cjkFont)
+        {
             Dispose();
             // 每次 Load 都要清空：切换字库 / 改配置都会重新 Load，
             // 不清就会把同一批错误反复累加，缺字上报里出现 N 条一模一样的记录。
             LoadErrors.Clear();
             List<string> order = new List<string>();
+            string main = string.IsNullOrEmpty(cjkFont)
+                ? (preferLocal ? "local.zip" : "mmah.zip")
+                : cjkFont;
+            order.Add(main);
             if (preferLocal) order.Add("local.zip");
             order.Add("mmah.zip");
             order.Add("pinyin.zip");
@@ -70,6 +83,17 @@ namespace InkPen.Core
             if (latinFont == "latin_script.zip") order.Add("latin.zip");
             order.Add("fallback.zip");
             if (!preferLocal) order.Add("local.zip");
+            // 主库可能已在上面的固定顺序里出现过；重复打开同一个 ZIP 会让
+            // 「禁用/启用」按名字查找时命中两份，覆盖数也会被算两遍。
+            List<string> seen = new List<string>();
+            List<string> dedup = new List<string>();
+            foreach (string n in order)
+            {
+                if (seen.Contains(n)) continue;
+                seen.Add(n);
+                dedup.Add(n);
+            }
+            order = dedup;
 
             foreach (string name in order)
             {

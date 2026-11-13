@@ -88,9 +88,12 @@ def main():
         checked += 1
         if not text:
             return
-        need = font.getlength(text) + pad
+        # 多行文案按最长的一行量。源码里写的是转义后的 "\\n"（两个字符），
+        # 先还原成真换行再切，否则整串会被当成一行，报出「宽 186 / 需要 364」这类误报。
+        longest = max(text.replace("\\n", "\n").split("\n"), key=font.getlength)
+        need = font.getlength(longest) + pad
         if need > w + 0.5:
-            problems.append((kind, text, w, need, line_no))
+            problems.append((kind, longest, w, need, line_no))
 
     for m in RE_B.finditer(src):
         text, x, y, w, h = m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5))
@@ -106,10 +109,14 @@ def main():
         # Label 不 AutoSize 时会自动折行，只要高度够就不算缺陷。
         # 只有「声明了 .Height 并且折完还是放不下」才是真的被裁。
         eol = src.find("\n", m.end())
-        stmt = src[m.start():eol if eol > 0 else len(src)]
+        # 高度常常写在下一行（`_dirHint = L(...)` 换行后 `_dirHint.Height = 60`），
+        # 只扫本行会漏掉它，把一条能折行放下的多行标签误判成被裁。
+        nxt = src.find("\n", eol + 1) if eol > 0 else -1
+        stmt = src[m.start():nxt if nxt > 0 else len(src)]
         hm = re.search(r'\.Height\s*=\s*(\d+)', stmt)
         checked += 1
-        need = font.getlength(text) + LABEL_PAD
+        longest = max(text.replace("\\n", "\n").split("\n"), key=font.getlength)
+        need = font.getlength(longest) + LABEL_PAD
         if hm:
             h = int(hm.group(1))
             lines = int(-(-need // max(1, w - LABEL_PAD)))       # ceil

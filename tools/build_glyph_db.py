@@ -205,6 +205,18 @@ def build_pinyin(latin):
     return out
 
 
+def count_pack(name):
+    """统计已存在的可选风格包字数，缺失时记 0（schema 里不留假数据）。"""
+    p = OUT / name
+    if not p.is_file():
+        return 0
+    try:
+        from glyph_format import read_font_zip
+        return len(read_font_zip(p))
+    except Exception:
+        return 0
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     print("[1/5] MMAH medians ...")
@@ -252,6 +264,8 @@ def main():
         "semantics": "each stroke is one continuous pen-down polyline; stroke boundary = pen up",
         "fonts": {
             "mmah.zip": {"source": "hanzi-writer-data / Make Me A Hanzi", "license": "Arphic Public License", "count": len(mmah), "role": "primary, correct stroke order"},
+            "kaiti.zip": {"source": "chinese-hershey-font STRK-Kaiti (full set)", "license": "MIT", "count": count_pack("kaiti.zip"), "role": "selectable CJK style: kaiti"},
+            "mingti.zip": {"source": "chinese-hershey-font STRK-Mingti", "license": "MIT", "count": count_pack("mingti.zip"), "role": "selectable CJK style: mingti"},
             "fallback.zip": {"source": "chinese-hershey-font STRK-Kaiti", "license": "MIT", "count": len(fb), "role": "missing-character fallback, no stroke order"},
             "latin.zip": {"source": "Hershey Futural (GRBL-Plotter data/fonts)", "license": "free use + acknowledgement", "count": len(latin), "role": "Latin/digits/ASCII/CJK punctuation"},
             "latin_script.zip": {"source": "Hershey Scripts", "license": "free use + acknowledgement", "count": len(latin_script), "role": "cursive Latin option"},
