@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>InkPen v2 · 界面原型</title>
+<style>
+/* ============================================================
+   InkPen v2 — Design tokens
+   ============================================================ */
+:root{
+  --accent:#185FA5;
+  --accent-hi:#1B6FBF;
+  --accent-dark:#0C447C;
+  --accent-soft:#E8F1FA;
+  --accent-line:#B7D3EA;
+
+  --bg:#F4F6F9;
+  --panel:#FFFFFF;
+  --panel-2:#FAFBFD;
+  --track:#EEF2F7;
+
+  --line:#E3E9F1;
+  --line-strong:#D2DBE6;
+
+  --text:#17202C;
+  --text-2:#4C5866;
+  --text-3:#697686;
+
+  --ok:#0F6E56;      --ok-soft:#E4F4EE;      --ok-line:#A9D8C8;
+  --warn:#8F5510;    --warn-soft:#FBF0DE;    --warn-line:#E4C89A;
+  --danger:#A32D2D;  --danger-soft:#FBEAEA;  --danger-line:#E2B4B4;
+
+  --r-sm:6px; --r-md:8px; --r-lg:10px;
+  --sh-1:0 1px 2px rgba(23,32,44,.06);
+  --sh-2:0 2px 6px rgba(23,32,44,.08);
+  --sh-paper:0 3px 16px rgba(23,32,44,.10), 0 1px 2px rgba(23,32,44,.06);
+
+  --f: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  --fm: "Cascadia Mono", Consolas, "SF Mono", "DejaVu Sans Mono", monospace;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:var(--f);
+  background:#DFE5ED;
+  color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  padding:0 0 40px;
+}
+button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
+input,select,textarea{font-family:inherit;color:inherit}
+
+/* icon defaults */
+.ic{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;
+    stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic.f{fill:currentColor;stroke:none}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+
+/* ============================================================
+   Demo chrome (不属于设计本身)
+   ============================================================ */
+.demo{
+  display:flex;align-items:center;gap:6px;
+  padding:12px 20px 10px;max-width:1280px;margin:0 auto;
+  font-size:12px;color:var(--text-2);
+}
+.demo b{font-weight:600;color:var(--text);margin-right:4px;font-size:12px}
+.demo .sep{width:1px;height:16px;background:#C4CDD9;margin:0 6px}
+.demo button{
+  height:26px;padding:0 11px;border-radius:13px;font-size:12px;
+  border:1px solid #C9D3DF;background:#fff;color:var(--text-2);
+  transition:.14s;
+}
+.demo button:hover{border-color:var(--accent-line);color:var(--accent-dark)}
+.demo button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.demo .grow{flex:1}
+.demo .link{font-size:12px;color:var(--accent);text-decoration:none;padding:4px 2px}
+.demo .link:hover{color:var(--accent-dark);text-decoration:underline}
+.demo .hint{color:var(--text-3);font-size:11.5px}
+
+.stage{max-width:1280px;margin:0 auto;overflow-x:auto}
+.app{
+  width:1280px;height:800px;position:relative;
+  background:var(--bg);border-radius:12px;overflow:hidden;
+  box-shadow:0 12px 40px rgba(23,32,44,.18),0 0 0 1px rgba(23,32,44,.08);
+  display:flex;flex-direction:column;
+}
+
+/* ============================================================
+   Header
+   ============================================================ */
+.hdr{
+  height:52px;flex:none;display:flex;align-items:center;gap:10px;
+  padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:9px}
+.tile{
+  width:30px;height:30px;border-radius:var(--r-md);background:var(--accent);
+  display:grid;place-items:center;color:#fff;
+  box-shadow:0 1px 2px rgba(12,68,124,.35);
+}
+.tile .ic{width:16px;height:16px;stroke-width:1.9}
+.bname{font-size:14.5px;font-weight:650;letter-spacing:-.1px}
+.bsub{
+  font-size:11.5px;color:var(--text-3);padding-left:10px;margin-left:2px;
+  border-left:1px solid var(--line);line-height:1;padding-top:1px;
+}
+.grow{flex:1}
+
+.pill{
+  height:26px;display:inline-flex;align-items:center;gap:6px;
+  padding:0 10px;border-radius:13px;font-size:11.5px;font-weight:600;
+  background:var(--track);color:var(--text-2);white-space:nowrap;
+}
+.pill.mono{font-family:var(--fm);font-size:11px;font-weight:500;letter-spacing:-.2px}
+.dot{width:6px;height:6px;border-radius:3px;background:currentColor;flex:none}
+
+.state{height:26px;display:inline-flex;align-items:center;gap:7px;padding:0 11px 0 9px;
+  border-radius:13px;font-size:11.5px;font-weight:650;letter-spacing:.2px}
+.state .dot{width:7px;height:7px;border-radius:4px}
+.s-idle{background:var(--ok-soft);color:var(--ok);box-shadow:inset 0 0 0 1px var(--ok-line)}
+.s-run{background:var(--accent-soft);color:var(--accent-dark);box-shadow:inset 0 0 0 1px var(--accent-line)}
+.s-alarm{background:var(--danger-soft);color:var(--danger);box-shadow:inset 0 0 0 1px var(--danger-line)}
+.s-off{background:#EDF1F5;color:var(--text-3);box-shadow:inset 0 0 0 1px #DCE3EC}
+.s-run .dot{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+.btn{
+  height:28px;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:0 10px;border-radius:var(--r-sm);font-size:12px;font-weight:500;
+  border:1px solid transparent;color:var(--text-2);background:transparent;
+  transition:background .13s,border-color .13s,color .13s,box-shadow .13s;
+  white-space:nowrap;
+}
+.btn:hover{background:var(--track);color:var(--text)}
+.btn:active{transform:translateY(.5px)}
+.btn.ghost{background:var(--panel);border-color:var(--line-strong);color:var(--text-2)}
+.btn.ghost:hover{border-color:var(--accent-line);color:var(--accent-dark);background:#fff}
+.btn.pri{
+  background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;
+  box-shadow:0 1px 2px rgba(12,68,124,.30);
+}
+.btn.pri:hover{background:var(--accent-hi);border-color:var(--accent-hi)}
+.btn.dan{background:var(--panel);border-color:var(--danger-line);color:var(--danger)}
+.btn.dan:hover{background:var(--danger-soft);border-color:#D79E9E}
+.btn.block{width:100%}
+.btn.lg{height:36px;font-size:13px;border-radius:7px}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--text-3)}
+.btn.quiet:hover{background:var(--track);color:var(--text)}
+
+/* ============================================================
+   Body / columns
+   ============================================================ */
+.body{
+  flex:1;min-height:0;display:grid;
+  grid-template-columns:292px minmax(0,1fr) 344px;
+  gap:12px;padding:12px;
+}
+.col{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);
+  display:flex;flex-direction:column;min-height:0;overflow:hidden;
+  box-shadow:var(--sh-1);
+}
+
+/* segmented tabs */
+.seg{display:flex;gap:3px;margin:10px 10px 0;padding:3px;background:var(--track);border-radius:8px;flex:none}
+.seg i{
+  flex:1;height:27px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:6px;white-space:nowrap;
+  font-size:12px;font-style:normal;color:var(--text-2);font-weight:500;
+  cursor:pointer;transition:.14s;gap:5px;
+}
+.seg i:hover{color:var(--text)}
+.seg i.on{background:var(--panel);color:var(--accent-dark);font-weight:650;box-shadow:var(--sh-1)}
+.seg i .ic{width:13px;height:13px}
+
+.scroll{flex:1;min-height:0;overflow-y:auto;padding:12px;scrollbar-width:thin}
+.scroll::-webkit-scrollbar{width:9px}
+.scroll::-webkit-scrollbar-thumb{background:#D5DDE7;border-radius:5px;border:2px solid #fff}
+.scroll::-webkit-scrollbar-thumb:hover{background:#C1CBD8}
+.scroll::-webkit-scrollbar-track{background:transparent}
+
+/* ============================================================
+   Form atoms
+   ============================================================ */
+.lbl{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  font-size:11.5px;color:var(--text-3);margin:0 0 5px;line-height:1.2;
+}
+.lbl .meta{font-size:11px;color:#8A95A3;font-family:var(--fm)}
+.frow{margin-bottom:11px}
+.frow:last-child{margin-bottom:0}
+
+.field{
+  height:28px;display:flex;align-items:center;gap:6px;padding:0 9px;
+  border:1px solid var(--line-strong);border-radius:var(--r-sm);background:var(--panel);
+  font-size:12.5px;color:var(--text);transition:.13s;
+}
+.field:hover{border-color:#C2CCD9}
+.field:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(24,95,165,.12)}
+.field input,.field select{
+  border:0;outline:0;background:transparent;flex:1 1 0;width:100%;min-width:0;
+  font-size:12.5px;font-family:var(--fm);letter-spacing:-.2px;
+}
+.field select{
+  font-family:var(--f);letter-spacing:0;appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='M4.5 6.5 8 10l3.5-3.5' fill='none' stroke='%23697686' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat:no-repeat;background-position:right 0 center;
+  padding-right:16px;
+}
+.field .sfx{font-size:11px;color:var(--text-3);font-family:var(--fm);flex:none}
+
+.ta{
+  width:100%;height:108px;resize:none;display:block;
+  border:1px solid var(--line-strong);border-radius:var(--r-sm);
+  background:var(--panel-2);padding:8px 10px;
+  font-size:12.5px;line-height:1.72;color:var(--text);outline:0;transition:.13s;
+}
+.ta:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(24,95,165,.10)}
+
+.row{display:flex;gap:6px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid2 > *{min-width:0}
+.lbl .meta{white-space:nowrap}
+
+.card{
+  border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel);
+  padding:11px 11px 12px;margin-bottom:10px;
+}
+.card > .ch{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  font-size:12px;font-weight:650;color:var(--text);margin:0 0 10px;
+}
+.card > .ch .ic{width:13px;height:13px;color:var(--text-3)}
+.card > .ch .tag{
+  font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:4px;
+  background:var(--accent-soft);color:var(--accent-dark);letter-spacing:.2px;
+}
+
+.sw{
+  width:32px;height:18px;border-radius:9px;background:#D8E0EA;position:relative;
+  flex:none;transition:background .16s;box-shadow:inset 0 1px 2px rgba(23,32,44,.10);
+}
+.sw::after{
+  content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:7px;
+  background:#fff;box-shadow:0 1px 2px rgba(23,32,44,.28);transition:left .16s;
+}
+.sw.on{background:var(--accent)}
+.sw.on::after{left:16px}
+.swrow{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--text-2);margin-bottom:9px}
+.swrow:last-child{margin-bottom:0}
+
+.small-seg{display:flex;padding:2px;background:var(--track);border-radius:6px;gap:2px;height:28px}
+.small-seg i{
+  flex:1;height:24px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:4px;white-space:nowrap;
+  font-size:11.5px;font-style:normal;color:var(--text-2);cursor:pointer;
+}
+.small-seg i.on{background:var(--panel);color:var(--accent-dark);font-weight:650;box-shadow:var(--sh-1)}
+
+.note{font-size:10.5px;line-height:1.55;color:var(--text-3);margin-top:7px}
+
+/* ============================================================
+   Center: toolbar + canvas
+   ============================================================ */
+.col-c{padding:0;gap:0}
+.tbar{
+  height:42px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;
+  border-bottom:1px solid var(--line);
+}
+.vchip{display:flex;padding:2px;background:var(--track);border-radius:6px;gap:2px}
+.vchip i{
+  height:24px;padding:0 9px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+  font-size:11.5px;font-style:normal;color:var(--text-2);border-radius:4px;cursor:pointer;
+}
+.vchip i .ic{width:12px;height:12px}
+.vchip i.on{background:var(--panel);color:var(--accent-dark);font-weight:650;box-shadow:var(--sh-1)}
+.iconbtn{
+  width:26px;height:26px;border-radius:5px;display:grid;place-items:center;color:var(--text-2);
+}
+.iconbtn:hover{background:var(--track);color:var(--text)}
+.zoomval{
+  font-family:var(--fm);font-size:11.5px;color:var(--text-2);min-width:40px;text-align:center;
+}
+.pager{display:flex;align-items:center;gap:2px;font-size:11.5px;color:var(--text-2);font-family:var(--fm)}
+.vsep{width:1px;height:16px;background:var(--line);flex:none;margin:0 2px}
+
+.canvas{
+  flex:1;min-height:0;position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 1px 1px, #DCE3EC 1px, transparent 0) 0 0/16px 16px,
+    #F7F9FC;
+  display:grid;place-items:center;padding:16px;
+}
+.paper{
+  width:352px;height:498px;background:#fff;border:1px solid #E6EBF2;
+  box-shadow:var(--sh-paper);border-radius:2px;position:relative;overflow:hidden;
+  padding:26px 24px;
+}
+.paper::before{
+  content:"";position:absolute;inset:0;
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 23.4px, #EDF1F6 23.4px 24.4px),
+    repeating-linear-gradient(to right, transparent 0 23.4px, #F2F5F9 23.4px 24.4px);
+  opacity:.85;pointer-events:none;
+}
+.paper .hand{
+  position:relative;font-family:"KaiTi","STKaiti",楷体,serif;
+  font-size:15.5px;line-height:24.4px;color:#1F2A38;letter-spacing:1.5px;
+}
+.paper .hand span{display:block;white-space:nowrap;overflow:hidden}
+.crosshair{
+  position:absolute;left:196px;top:238px;width:26px;height:26px;margin:-13px 0 0 -13px;
+  pointer-events:none;
+}
+.crosshair::before,.crosshair::after{
+  content:"";position:absolute;background:var(--accent);opacity:.85;
+}
+.crosshair::before{left:12px;top:0;width:1px;height:26px}
+.crosshair::after{top:12px;left:0;height:1px;width:26px}
+.crosshair b{
+  position:absolute;left:15px;top:13px;font-size:9px;font-family:var(--fm);
+  background:var(--accent);color:#fff;padding:1px 4px;border-radius:3px;white-space:nowrap;
+}
+.paper-tag{
+  position:absolute;right:10px;top:-1px;font-size:10px;font-family:var(--fm);
+  color:var(--text-3);background:#F7F9FC;border:1px solid var(--line);border-top:0;
+  padding:2px 7px;border-radius:0 0 4px 4px;
+}
+
+/* run bar */
+.runbar{
+  height:52px;flex:none;display:none;align-items:center;gap:12px;
+  padding:0 12px;border-top:1px solid var(--line);background:var(--panel-2);
+}
+.prog{flex:1;min-width:0}
+.prog .track{height:5px;border-radius:3px;background:#DBE3ED;overflow:hidden;position:relative;box-shadow:inset 0 1px 1px rgba(23,32,44,.08)}
+.prog .fill{height:100%;width:42%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent-hi));position:relative}
+.prog .fill::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);
+  animation:sweep 1.6s linear infinite;
+}
+@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.prog .meta{
+  display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--text-3);
+  margin-top:6px;font-family:var(--fm);
+}
+.prog .meta b{color:var(--accent-dark);font-weight:600}
+
+/* status strip */
+.status{
+  height:26px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;
+  border-top:1px solid var(--line);font-size:11px;color:var(--text-3);
+}
+.status .dot{width:6px;height:6px;border-radius:3px;background:var(--ok)}
+.status .mono{font-family:var(--fm)}
+
+/* alarm banner */
+.alarm{
+  display:none;align-items:center;gap:9px;padding:9px 12px;flex:none;
+  background:var(--danger-soft);border-bottom:1px solid var(--danger-line);
+  font-size:12px;color:#7C2222;
+}
+.alarm .ic{color:var(--danger);width:15px;height:15px}
+.alarm b{font-weight:650;color:var(--danger)}
+.alarm .grow{flex:1}
+
+/* empty state */
+.empty{
+  display:none;position:absolute;inset:0;place-items:center;background:#F7F9FC;
+}
+.empty .box{
+  width:360px;text-align:center;padding:26px 22px;border-radius:12px;
+  background:#fff;border:1px solid var(--line);box-shadow:var(--sh-2);
+}
+.empty .ico{
+  width:44px;height:44px;border-radius:12px;background:var(--accent-soft);
+  color:var(--accent);display:grid;place-items:center;margin:0 auto 12px;
+}
+.empty .ico .ic{width:22px;height:22px}
+.empty h3{margin:0 0 5px;font-size:14px;font-weight:650}
+.empty p{margin:0 0 14px;font-size:12px;color:var(--text-3);line-height:1.6}
+.empty .row{justify-content:center}
+.empty .kbd{margin-top:14px;font-size:10.5px;color:var(--text-3)}
+kbd{
+  font-family:var(--fm);font-size:10px;padding:1px 5px;border-radius:3px;
+  background:#EEF2F7;border:1px solid var(--line-strong);border-bottom-width:2px;color:var(--text-2);
+}
+
+/* ============================================================
+   Right column
+   ============================================================ */
+.col-r{padding:0}
+.dro{padding:12px 14px 10px;flex:none}
+.dro-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.dro-h .t{font-size:11.5px;color:var(--text-3);font-weight:600;letter-spacing:.2px}
+.dro-h .m{font-size:10.5px;color:var(--accent);cursor:pointer}
+.dro-h .m:hover{text-decoration:underline}
+.axes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.ax{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:5px 7px 6px}
+.ax-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:1px}
+.ax-h b{font-size:10px;font-weight:700;color:var(--accent);letter-spacing:.5px;font-family:var(--fm)}
+.ax-z{width:15px;height:15px;border-radius:3px;display:grid;place-items:center;color:#9AA5B3}
+.ax-z:hover{background:var(--accent-soft);color:var(--accent)}
+.ax-z .ic{width:11px;height:11px}
+.ax-v{
+  font-family:var(--fm);font-size:15.5px;font-weight:600;letter-spacing:-.6px;
+  text-align:right;color:var(--text);line-height:1.25;
+}
+.ax.dim .ax-v{color:var(--text-3)}
+.ovr{
+  display:flex;align-items:center;gap:10px;margin-top:9px;font-size:11px;color:var(--text-3);
+}
+.ovr span{display:inline-flex;align-items:center;gap:4px}
+.ovr b{font-family:var(--fm);font-size:11px;color:var(--text-2);font-weight:600}
+.ovr .r{margin-left:auto;color:var(--accent);cursor:pointer;font-size:10.5px}
+
+.hr{height:1px;background:var(--line);flex:none;margin:0 14px}
+
+/* jog */
+.jog{padding:11px 14px 12px;flex:none}
+.jog-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.jog-h .t{font-size:11.5px;color:var(--text-3);font-weight:600}
+.steps{display:flex;gap:3px}
+.steps i{
+  height:20px;padding:0 6px;display:grid;place-items:center;border-radius:4px;
+  font-size:10.5px;font-style:normal;font-family:var(--fm);color:var(--text-2);
+  cursor:pointer;border:1px solid transparent;
+}
+.steps i:hover{background:var(--track)}
+.steps i.on{background:var(--accent-soft);color:var(--accent-dark);border-color:var(--accent-line);font-weight:650}
+
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.jk{
+  height:40px;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);
+  display:grid;place-items:center;color:var(--text-2);transition:.12s;
+  box-shadow:0 1px 1px rgba(23,32,44,.04);
+}
+.jk:hover{border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent-dark)}
+.jk:active{transform:translateY(1px);box-shadow:none;background:#DCEAF7}
+.jk .ic{width:16px;height:16px;stroke-width:2}
+.jk.mid{
+  background:var(--panel-2);border-style:dashed;color:#A6B0BD;cursor:default;
+  box-shadow:none;flex-direction:column;gap:1px;
+}
+.jk.mid:hover{background:var(--panel-2);border-color:var(--line-strong);color:#A6B0BD}
+.jk.mid span{font-size:9px;font-family:var(--fm);letter-spacing:.3px}
+.jk.blank{border:0;background:transparent;box-shadow:none;pointer-events:none}
+.jkz{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:5px}
+.jkz .jk{height:28px;font-size:11px;gap:4px;display:inline-flex;align-items:center;justify-content:center}
+.jkz .jk .ic{width:12px;height:12px}
+
+/* actions pinned */
+.acts{padding:11px 14px 12px;border-top:1px solid var(--line);background:var(--panel-2);flex:none}
+.acts .row2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:6px}
+.estop{
+  height:30px;font-size:11.5px;font-weight:600;border-radius:6px;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  border:1px solid var(--danger-line);background:#fff;color:var(--danger);
+}
+.estop:hover{background:var(--danger-soft)}
+.estop .ic{width:13px;height:13px}
+
+/* ============================================================
+   State switch
+   ============================================================ */
+.only-run,.only-alarm,.only-empty,.lockhint{display:none}
+.only-idle{display:block}
+body[data-state="run"] .only-idle{display:none}
+body[data-state="run"] .only-run{display:flex}
+body[data-state="run"] .runbar{display:flex}
+body[data-state="alarm"] .only-alarm{display:flex}
+body[data-state="alarm"] .alarm{display:flex}
+body[data-state="empty"] .empty{display:grid}
+body[data-state="empty"] .paper,body[data-state="empty"] .runbar{display:none}
+body[data-state="run"] .lockhint{display:flex}
+body[data-state="offline"] .jk,
+body[data-state="offline"] .estop,
+body[data-state="alarm"] .jk,
+body[data-state="empty"] .startbtn,
+body[data-state="alarm"] .startbtn,
+body[data-state="offline"] .startbtn{opacity:.4;pointer-events:none}
+body[data-state="offline"] .ax-v{color:var(--text-3)}
+body[data-state="alarm"] .status .dot{background:var(--danger)}
+body[data-state="offline"] .status .dot{background:#B6C0CD}
+body[data-state="offline"] .crosshair,
+body[data-state="empty"] .crosshair{display:none}
+body[data-state="run"] .crosshair{display:block}
+.crosshair{display:none}
+
+/* annotation pins */
+.pin{
+  position:absolute;width:19px;height:19px;border-radius:10px;background:#111A24;color:#fff;
+  font-size:10.5px;font-weight:700;display:none;place-items:center;z-index:40;
+  box-shadow:0 2px 6px rgba(0,0,0,.3),0 0 0 2px #fff;font-family:var(--fm);cursor:default;
+}
+body.annot .pin{display:grid}
+.pin:hover{z-index:41}
+.pin::after{
+  content:attr(data-note);position:absolute;left:24px;top:-6px;width:196px;
+  background:#111A24;color:#F2F5F9;font-size:10.5px;font-weight:400;line-height:1.5;
+  padding:7px 9px;border-radius:6px;opacity:0;pointer-events:none;transition:.14s;
+  font-family:var(--f);white-space:normal;text-align:left;
+}
+.pin:hover::after{opacity:1}
+.pin.r::after{left:auto;right:24px}
+</style>
+</head>
+<body data-state="idle">
+<svg class="sprite" aria-hidden="true" focusable="false">
+<defs>
+<symbol id="i-pen" viewBox="0 0 16 16"><path d="M11.6 2.4 13.6 4.4 6.2 11.8 3.2 12.8 4.2 9.8z"/><path d="M9.9 4.1 11.9 6.1"/></symbol>
+<symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.3 12.4 8 5 12.7z" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-pause" viewBox="0 0 16 16"><rect x="4.8" y="3.6" width="2.4" height="8.8" rx=".7" fill="currentColor" stroke="none"/><rect x="8.8" y="3.6" width="2.4" height="8.8" rx=".7" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-stop" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-home" viewBox="0 0 16 16"><path d="M2.4 7.5 8 3l5.6 4.5"/><path d="M4.1 7.1v6.1h7.8V7.1"/></symbol>
+<symbol id="i-chip" viewBox="0 0 16 16"><rect x="4.3" y="4.3" width="7.4" height="7.4" rx="1.3"/><path d="M6.6 2.1v2.2M9.4 2.1v2.2M6.6 11.7v2.2M9.4 11.7v2.2M2.1 6.6h2.2M2.1 9.4h2.2M11.7 6.6h2.2M11.7 9.4h2.2"/></symbol>
+<symbol id="i-text" viewBox="0 0 16 16"><path d="M3.2 4h9.6M8 4v9.2"/><path d="M5.8 13.2h4.4"/></symbol>
+<symbol id="i-font" viewBox="0 0 16 16"><path d="M3.4 13 6.7 3.2h1.3L11.3 13"/><path d="M4.8 9.4h5.5"/></symbol>
+<symbol id="i-book" viewBox="0 0 16 16"><path d="M2.6 4.1c1.6-.8 3.6-.7 5.4.4v8.1c-1.8-1.1-3.8-1.2-5.4-.4z"/><path d="M13.4 4.1c-1.6-.8-3.6-.7-5.4.4v8.1c1.8-1.1 3.8-1.2 5.4-.4z"/></symbol>
+<symbol id="i-grid" viewBox="0 0 16 16"><rect x="2.7" y="2.7" width="4.3" height="4.3" rx=".9"/><rect x="9" y="2.7" width="4.3" height="4.3" rx=".9"/><rect x="2.7" y="9" width="4.3" height="4.3" rx=".9"/><rect x="9" y="9" width="4.3" height="4.3" rx=".9"/></symbol>
+<symbol id="i-path" viewBox="0 0 16 16"><path d="M2.4 11.6 6 5.4l3.3 4.1 4.3-6"/><circle cx="2.4" cy="11.6" r="1.1" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-zin" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3 14 14"/><path d="M5.1 7h3.8M7 5.1v3.8"/></symbol>
+<symbol id="i-zout" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3 14 14"/><path d="M5.1 7h3.8"/></symbol>
+<symbol id="i-fit" viewBox="0 0 16 16"><path d="M2.9 6.2V2.9h3.3M13.1 6.2V2.9H9.8M2.9 9.8v3.3h3.3M13.1 9.8v3.3H9.8"/></symbol>
+<symbol id="i-l" viewBox="0 0 16 16"><path d="M9.9 4.2 6.1 8l3.8 3.8"/></symbol>
+<symbol id="i-r" viewBox="0 0 16 16"><path d="M6.1 4.2 9.9 8l-3.8 3.8"/></symbol>
+<symbol id="i-up" viewBox="0 0 16 16"><path d="M8 12.8V3.6M4.3 7.3 8 3.6l3.7 3.7"/></symbol>
+<symbol id="i-dn" viewBox="0 0 16 16"><path d="M8 3.2v9.2M4.3 8.7 8 12.4l3.7-3.7"/></symbol>
+<symbol id="i-lf" viewBox="0 0 16 16"><path d="M12.8 8H3.6M7.3 4.3 3.6 8l3.7 3.7"/></symbol>
+<symbol id="i-rt" viewBox="0 0 16 16"><path d="M3.2 8h9.2M8.7 4.3 12.4 8l-3.7 3.7"/></symbol>
+<symbol id="i-target" viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.5"/><path d="M8 1.5v2.1M8 12.4v2.1M1.5 8h2.1M12.4 8h2.1"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 16 16"><path d="M8.7 2 4.3 8.7h3.1L6.9 14l4.7-7h-3.2z"/></symbol>
+<symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.9 14.2 13H1.8z"/><path d="M8 6.3v3.2M8 11.6h.01"/></symbol>
+<symbol id="i-reset" viewBox="0 0 16 16"><path d="M3.2 8a4.7 4.7 0 1 0 1.7-3.6"/><path d="M3.1 3.7v3.4h3.4"/></symbol>
+<symbol id="i-unlock" viewBox="0 0 16 16"><rect x="3.3" y="7.3" width="9.4" height="6.2" rx="1.4"/><path d="M5.7 7.3V5.1a2.6 2.6 0 0 1 5.1-.8"/></symbol>
+<symbol id="i-plug" viewBox="0 0 16 16"><path d="M6 2.4v3.2M10 2.4v3.2"/><path d="M4.4 5.6h7.2v2.6a3.6 3.6 0 0 1-7.2 0z"/><path d="M8 11.8v1.8"/></symbol>
+<symbol id="i-folder" viewBox="0 0 16 16"><path d="M2.4 4.6h4l1.3 1.8h5.9v6.2H2.4z"/></symbol>
+<symbol id="i-save" viewBox="0 0 16 16"><path d="M3 3h7.6L13 5.4V13H3z"/><path d="M5.6 3v3.4h4.6V3M5.6 13V9.4h4.8V13"/></symbol>
+<symbol id="i-dl" viewBox="0 0 16 16"><path d="M8 2.6v7.2M5.2 7.2 8 10l2.8-2.8"/><path d="M3.2 12.6h9.6"/></symbol>
+<symbol id="i-paste" viewBox="0 0 16 16"><rect x="3.6" y="3.4" width="8.8" height="10" rx="1.2"/><path d="M6 2.2h4v2.4H6z"/></symbol>
+<symbol id="i-trash" viewBox="0 0 16 16"><path d="M3.2 4.6h9.6M6.4 4.6V3h3.2v1.6"/><path d="M4.6 4.6 5.4 13h5.2l.8-8.4"/></symbol>
+<symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6 5 5M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4"/></symbol>
+<symbol id="i-sliders" viewBox="0 0 16 16"><path d="M2.6 4.6h10.8M2.6 11.4h10.8"/><circle cx="6" cy="4.6" r="1.5" fill="#fff"/><circle cx="10.4" cy="11.4" r="1.5" fill="#fff"/></symbol>
+<symbol id="i-file" viewBox="0 0 16 16"><path d="M4 2.6h5l3.2 3.2v7.6H4z"/><path d="M9 2.6v3.2h3.2"/></symbol>
+<symbol id="i-check" viewBox="0 0 16 16"><path d="M3.4 8.4 6.6 11.6 12.8 4.8"/></symbol>
+</defs>
+</svg>
+
+<div class="demo">
+  <b>状态演示</b>
+  <button data-s="idle" class="on">待机</button>
+  <button data-s="run">书写中</button>
+  <button data-s="alarm">报警</button>
+  <button data-s="empty">空态</button>
+  <button data-s="offline">未连接</button>
+  <span class="sep"></span>
+  <button id="btnAnnot">显示批注</button>
+  <span class="grow"></span>
+  <span class="hint">1280 × 800 · 100%</span>
+  <a class="link" href="inkpen-v2-spec.html">设计规范与组件库 →</a>
+</div>
+
+<div class="stage">
+<div class="app">
+
+  <span class="pin" style="left:242px;top:16px" data-note="全局状态与连接只出现在顶栏：切到日志、参数任何页签都不会消失。状态色语义固定——绿待机 / 蓝运行 / 琥珀暂停 / 红报警 / 灰离线。">1</span>
+  <span class="pin r" style="left:912px;top:112px" data-note="DRO + Jog 从页签里拿出来常驻。这是操作频率最高的两块，任何时刻都在同一位置，形成肌肉记忆。">2</span>
+  <span class="pin r" style="left:912px;top:452px" data-note="低频配置（电机方向、宏、调平、参数、日志）收进三个页签，高级项再加二级页签，右栏不再出现四层同权重的卡片堆叠。">3</span>
+  <span class="pin" style="left:6px;top:66px" data-note="左栏只回答一个问题：写什么。文稿 → 版式 → 生成，单向流程，不需要来回跳。">4</span>
+  <span class="pin" style="left:700px;top:630px" data-note="运行独占一条：进度、已发送行数、剩余时间、暂停/停止。只在运行期出现，待机时不留空条。">5</span>
+  <span class="pin r" style="left:912px;top:686px" data-note="主操作钉在右栏底部，不进滚动区；红色只留给急停一个按钮，避免两个红按钮抢注意力。">6</span>
+
+  <!-- ============ Header ============ -->
+  <header class="hdr">
+    <div class="brand">
+      <div class="tile"><svg class="ic"><use href="#i-pen"/></svg></div>
+      <span class="bname">InkPen</span>
+      <span class="bsub">写字机工作台</span>
+    </div>
+    <div class="grow"></div>
+    <div class="state s-idle" id="statePill"><i class="dot"></i><span id="stateText">待机 Idle</span></div>
+    <div class="pill mono"><svg class="ic" style="width:12px;height:12px"><use href="#i-chip"/></svg>GRBL 1.3a · ESP32</div>
+    <div class="pill mono" id="connPill"><i class="dot" style="color:var(--ok)"></i><span id="connText">COM3 · 115200</span></div>
+    <button class="btn ghost" id="connBtn"><svg class="ic"><use href="#i-plug"/></svg>断开</button>
+  </header>
+
+  <div class="body">
+
+    <!-- ============ Left ============ -->
+    <aside class="col">
+      <div class="seg">
+        <i class="on"><svg class="ic"><use href="#i-text"/></svg>文稿</i>
+        <i><svg class="ic"><use href="#i-font"/></svg>字库</i>
+        <i><svg class="ic"><use href="#i-book"/></svg>预设</i>
+      </div>
+
+      <div class="scroll">
+        <div class="lockhint only-run" style="align-items:center;gap:7px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-dark);border-radius:6px;padding:7px 9px;font-size:11px;margin-bottom:10px">
+          <svg class="ic" style="width:12px;height:12px"><use href="#i-pause"/></svg>
+          书写中 · 文稿与版式已锁定
+        </div>
+
+        <div class="only-idle">
+          <div class="lbl">输入文稿 <span class="meta">5 行 · 84 字</span></div>
+          <textarea class="ta" spellcheck="false">写字机工作台
+基于开源 GRBL·Plotter 二次开发
+免驱动 免安装 离线可用
+中文手写体一键生成 GCode
+Hello 123，谢谢你</textarea>
+          <div class="row" style="margin:7px 0 12px">
+            <button class="btn ghost" style="flex:1;height:27px"><svg class="ic"><use href="#i-folder"/></svg>打开 txt</button>
+            <button class="btn ghost" style="flex:1;height:27px"><svg class="ic"><use href="#i-paste"/></svg>粘贴</button>
+            <button class="btn quiet" style="width:28px;height:27px;padding:0"><svg class="ic"><use href="#i-trash"/></svg></button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="ch"><span>版式</span><span class="tag">A4</span></div>
+          <div class="frow">
+            <div class="lbl">稿纸模板</div>
+            <div class="field"><select><option>横线稿纸 / 信纸</option><option>方格纸</option><option>空白</option></select></div>
+          </div>
+          <div class="frow">
+            <div class="lbl">文字方向</div>
+            <div class="small-seg"><i class="on">横排</i><i>竖排</i></div>
+          </div>
+          <div class="grid2 frow">
+            <div><div class="lbl">字号</div><div class="field"><input value="10.0"><span class="sfx">mm</span></div></div>
+            <div><div class="lbl">字距</div><div class="field"><input value="1.0"><span class="sfx">mm</span></div></div>
+          </div>
+          <div class="grid2">
+            <div><div class="lbl">行距</div><div class="field"><input value="6.0"><span class="sfx">mm</span></div></div>
+            <div><div class="lbl">首行缩进</div><div class="field"><input value="0.0"><span class="sfx">mm</span></div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="ch"><span>排版选项</span></div>
+          <div class="swrow"><span class="sw on"></span>把格线写入 GCode</div>
+          <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
+            <span style="font-size:11.5px;color:var(--text-3);white-space:nowrap">段落对齐</span>
+            <div class="small-seg" style="flex:1;min-width:0">
+              <i>左对齐</i><i class="on">居中</i><i>两端对齐</i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="acts">
+        <button class="btn pri lg block"><svg class="ic"><use href="#i-bolt"/></svg>生成 GCode / 预览</button>
+        <div class="row" style="margin-top:6px">
+          <button class="btn ghost" style="flex:1;height:30px"><svg class="ic"><use href="#i-dl"/></svg>导出 .nc</button>
+          <button class="btn ghost" style="width:32px;height:30px;padding:0"><svg class="ic"><use href="#i-save"/></svg></button>
+        </div>
+        <div class="note" style="margin-top:6px">笔 130 · 2 902 行 · 预计 8 分 40 秒</div>
+      </div>
+    </aside>
+
+    <!-- ============ Center ============ -->
+    <main class="col col-c">
+      <div class="tbar">
+        <div class="vchip">
+          <i class="on"><svg class="ic"><use href="#i-file"/></svg>预览</i>
+          <i><svg class="ic"><use href="#i-grid"/></svg>格线</i>
+          <i><svg class="ic"><use href="#i-path"/></svg>路径</i>
+        </div>
+        <div class="vsep"></div>
+        <button class="iconbtn"><svg class="ic"><use href="#i-zout"/></svg></button>
+        <span class="zoomval">65%</span>
+        <button class="iconbtn"><svg class="ic"><use href="#i-zin"/></svg></button>
+        <button class="iconbtn"><svg class="ic"><use href="#i-fit"/></svg></button>
+        <div class="grow"></div>
+        <button class="iconbtn"><svg class="ic"><use href="#i-l"/></svg></button>
+        <span class="pager">1 / 3</span>
+        <button class="iconbtn"><svg class="ic"><use href="#i-r"/></svg></button>
+        <div class="vsep"></div>
+        <span class="pill mono" style="height:24px;font-size:10.5px">A4 · 210×297</span>
+      </div>
+
+      <div class="alarm">
+        <svg class="ic"><use href="#i-warn"/></svg>
+        <span><b>ALARM 1</b> 硬限位触发 · 机器已锁死，需先解锁才能移动</span>
+        <span class="grow"></span>
+        <button class="btn ghost" style="height:25px;font-size:11.5px"><svg class="ic"><use href="#i-unlock"/></svg>解锁 $X</button>
+        <button class="btn dan" style="height:25px;font-size:11.5px"><svg class="ic"><use href="#i-reset"/></svg>软复位</button>
+      </div>
+
+      <div class="canvas">
+        <div class="paper">
+          <div class="paper-tag">A4 · 65%</div>
+          <div class="hand">
+            <span style="margin-left:2px">写字机工作台</span>
+            <span style="margin-left:9px">基于开源 GRBL·Plotter 二次开发</span>
+            <span style="margin-left:5px">免驱动 免安装 离线可用</span>
+            <span style="margin-left:11px">中文手写体一键生成 GCode</span>
+            <span style="margin-left:6px">Hello 123，谢谢你</span>
+          </div>
+          <div class="crosshair"><b>X120 Y64</b></div>
+        </div>
+        <div class="empty">
+          <div class="box">
+            <div class="ico"><svg class="ic"><use href="#i-pen"/></svg></div>
+            <h3>把文稿放进来开始</h3>
+            <p>支持 .txt 拖入，或直接粘贴文字。<br>生成后可以先用格线预览校准版式。</p>
+            <div class="row">
+              <button class="btn pri"><svg class="ic"><use href="#i-folder"/></svg>打开 txt</button>
+              <button class="btn ghost"><svg class="ic"><use href="#i-paste"/></svg>粘贴示例</button>
+            </div>
+            <div class="kbd">或按 <kbd>Ctrl</kbd> + <kbd>O</kbd> 打开文件</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="runbar">
+        <div class="prog">
+          <div class="track"><div class="fill"></div></div>
+          <div class="meta">
+            <span>已发送 <b>1 234</b> / 2 902 行</span>
+            <span>剩余 02:10 · 约 8 分完成</span>
+          </div>
+        </div>
+        <button class="btn ghost" style="height:28px"><svg class="ic"><use href="#i-pause"/></svg>暂停</button>
+        <button class="btn dan" style="height:28px"><svg class="ic"><use href="#i-stop"/></svg>停止</button>
+      </div>
+
+      <div class="status">
+        <i class="dot"></i>
+        <span id="statusText">静态检查通过 · 0 警告</span>
+        <span class="grow"></span>
+        <span class="mono">Buf 127 / 128</span>
+        <span class="mono" style="color:var(--line-strong)">|</span>
+        <span class="mono">X120.500 Y64.250 Z-2.000</span>
+      </div>
+    </main>
+
+    <!-- ============ Right ============ -->
+    <aside class="col col-r">
+      <div class="dro">
+        <div class="dro-h">
+          <span class="t">工作坐标</span>
+          <span class="m">切到机器坐标</span>
+        </div>
+        <div class="axes">
+          <div class="ax">
+            <div class="ax-h"><b>X</b><button class="ax-z" title="X 归零"><svg class="ic"><use href="#i-target"/></svg></button></div>
+            <div class="ax-v">120.500</div>
+          </div>
+          <div class="ax">
+            <div class="ax-h"><b>Y</b><button class="ax-z" title="Y 归零"><svg class="ic"><use href="#i-target"/></svg></button></div>
+            <div class="ax-v">64.250</div>
+          </div>
+          <div class="ax">
+            <div class="ax-h"><b>Z</b><button class="ax-z" title="Z 归零"><svg class="ic"><use href="#i-target"/></svg></button></div>
+            <div class="ax-v">-2.000</div>
+          </div>
+        </div>
+        <div class="ovr">
+          <span>进给 <b>100%</b></span>
+          <span>主轴 <b>100%</b></span>
+          <span class="r">重置倍率</span>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="jog">
+        <div class="jog-h">
+          <span class="t">手动移动</span>
+          <div class="steps">
+            <i>0.1</i><i>1</i><i class="on">10</i><i>50</i><i>100</i>
+          </div>
+        </div>
+        <div class="pad">
+          <div class="jk blank"></div>
+          <div class="jk"><svg class="ic"><use href="#i-up"/></svg></div>
+          <div class="jk blank"></div>
+          <div class="jk"><svg class="ic"><use href="#i-lf"/></svg></div>
+          <div class="jk mid"><svg class="ic" style="width:7px;height:7px;fill:#B6C0CD;stroke:none"><use href="#i-stop"/></svg><span>XY</span></div>
+          <div class="jk"><svg class="ic"><use href="#i-rt"/></svg></div>
+          <div class="jk blank"></div>
+          <div class="jk"><svg class="ic"><use href="#i-dn"/></svg></div>
+          <div class="jk blank"></div>
+        </div>
+        <div class="jkz">
+          <button class="jk"><svg class="ic"><use href="#i-up"/></svg>Z+</button>
+          <button class="jk"><svg class="ic"><use href="#i-dn"/></svg>Z−</button>
+          <button class="jk"><svg class="ic"><use href="#i-home"/></svg>回原点</button>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="seg" style="margin:10px 14px 0">
+        <i class="on"><svg class="ic"><use href="#i-gear"/></svg>机器</i>
+        <i><svg class="ic"><use href="#i-target"/></svg>调平</i>
+        <i><svg class="ic"><use href="#i-sliders"/></svg>高级</i>
+      </div>
+
+      <div class="scroll" style="padding:12px 14px">
+        <div class="lbl">电机方向 <span class="meta">改后需重新归零</span></div>
+        <div class="swrow"><span class="sw on"></span>X 轴反向</div>
+        <div class="swrow"><span class="sw"></span>Y 轴反向</div>
+        <div class="swrow"><span class="sw on"></span>Z 轴反向</div>
+        <div class="lbl" style="margin-top:12px">宏按钮 <span class="meta">可编辑</span></div>
+        <div class="grid2">
+          <button class="btn ghost" style="height:29px">抬笔</button>
+          <button class="btn ghost" style="height:29px">试笔</button>
+          <button class="btn ghost" style="height:29px">回纸角</button>
+          <button class="btn ghost" style="height:29px">清报警</button>
+        </div>
+      </div>
+
+      <div class="acts">
+        <button class="btn pri lg block startbtn"><svg class="ic"><use href="#i-play"/></svg>开始书写</button>
+        <div class="row2" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:6px">
+          <button class="btn ghost" style="height:29px"><svg class="ic"><use href="#i-pause"/></svg>暂停</button>
+          <button class="btn ghost" style="height:29px"><svg class="ic"><use href="#i-play"/></svg>继续</button>
+          <button class="btn ghost" style="height:29px"><svg class="ic"><use href="#i-stop"/></svg>停止</button>
+        </div>
+        <button class="estop" style="margin-top:6px;width:100%"><svg class="ic"><use href="#i-warn"/></svg>急停 · 软复位</button>
+      </div>
+    </aside>
+
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+  var MAP = {
+    idle:{cls:'s-idle', txt:'待机 Idle',   st:'静态检查通过 · 0 警告',        conn:'断开', connDot:'var(--ok)',      connTxt:'COM3 · 115200'},
+    run: {cls:'s-run',  txt:'书写中 Run',  st:'正在书写 · 第 2 页 / 共 3 页', conn:'断开', connDot:'var(--ok)',      connTxt:'COM3 · 115200'},
+    alarm:{cls:'s-alarm',txt:'报警 Alarm', st:'ALARM 1 硬限位触发，需解锁',   conn:'断开', connDot:'var(--ok)',      connTxt:'COM3 · 115200'},
+    empty:{cls:'s-idle',txt:'待机 Idle',   st:'等待文稿 · 尚未生成 GCode',    conn:'断开', connDot:'var(--ok)',      connTxt:'COM3 · 115200'},
+    offline:{cls:'s-off',txt:'未连接',     st:'未连接机器 · 浏览模式',        conn:'连接', connDot:'#B6C0CD',        connTxt:'未选择串口'}
+  };
+  var pill = document.getElementById('statePill');
+  var pillTxt = document.getElementById('stateText');
+  var st = document.getElementById('statusText');
+  var cb = document.getElementById('connBtn');
+  var cd = document.getElementById('connPill').querySelector('.dot');
+  var ct = document.getElementById('connText');
+
+  document.querySelectorAll('.demo [data-s]').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.querySelectorAll('.demo [data-s]').forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      var s = b.dataset.s, m = MAP[s];
+      document.body.dataset.state = s;
+      pill.className = 'state ' + m.cls;
+      pillTxt.textContent = m.txt;
+      st.textContent = m.st;
+      cb.innerHTML = '<svg class="ic"><use href="#i-plug"/></svg>' + m.conn;
+      cd.style.color = m.connDot;
+      ct.textContent = m.connTxt;
+
+      var ta = document.querySelector('.ta');
+      var meta = document.querySelector('.only-idle .meta');
+      if (s === 'empty'){ ta.dataset.keep = ta.value; ta.value = ''; meta.textContent = '0 行 · 0 字'; }
+      else if (ta.dataset.keep){ ta.value = ta.dataset.keep; meta.textContent = '5 行 · 84 字'; }
+    });
+  });
+
+  var ann = document.getElementById('btnAnnot');
+  ann.addEventListener('click', function(){
+    var on = document.body.classList.toggle('annot');
+    ann.classList.toggle('on', on);
+    ann.textContent = on ? '隐藏批注' : '显示批注';
+  });
+
+  var h = (location.hash || '').replace('#','');
+  var pre = document.querySelector('.demo [data-s="' + h + '"]');
+  if (pre) pre.click();
+  if (h === 'annot') document.getElementById('btnAnnot').click();
+})();
+</script>
+</body>
+</html>

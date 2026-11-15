@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>InkPen v2 · 设计规范</title>
+<style>
+:root{
+  --accent:#185FA5; --accent-hi:#1B6FBF; --accent-dark:#0C447C;
+  --accent-soft:#E8F1FA; --accent-line:#B7D3EA;
+  --bg:#F4F6F9; --panel:#fff; --panel-2:#FAFBFD; --track:#EEF2F7;
+  --line:#E3E9F1; --line-strong:#D2DBE6;
+  --text:#17202C; --text-2:#4C5866; --text-3:#697686;
+  --ok:#0F6E56; --ok-soft:#E4F4EE; --ok-line:#A9D8C8;
+  --warn:#8F5510; --warn-soft:#FBF0DE; --warn-line:#E4C89A;
+  --danger:#A32D2D; --danger-soft:#FBEAEA; --danger-line:#E2B4B4;
+  --r-sm:6px; --r-md:8px; --r-lg:10px;
+  --sh-1:0 1px 2px rgba(23,32,44,.06);
+  --sh-2:0 2px 6px rgba(23,32,44,.08);
+  --f:-apple-system,"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+  --fm:"Cascadia Mono",Consolas,"SF Mono","DejaVu Sans Mono",monospace;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:var(--f);-webkit-font-smoothing:antialiased;line-height:1.65;
+}
+.wrap{max-width:1040px;margin:0 auto;padding:0 28px 100px}
+
+/* header */
+.top{
+  background:var(--panel);border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:20;
+}
+.top .in{
+  max-width:1040px;margin:0 auto;padding:14px 28px;display:flex;align-items:center;gap:12px;
+}
+.tile{width:30px;height:30px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff}
+h1{font-size:16px;margin:0;font-weight:650;letter-spacing:-.2px}
+.sub{font-size:11.5px;color:var(--text-3);border-left:1px solid var(--line);padding-left:12px}
+.grow{flex:1}
+.back{
+  font-size:12px;color:var(--accent);text-decoration:none;border:1px solid var(--accent-line);
+  padding:5px 11px;border-radius:14px;background:var(--accent-soft);font-weight:600;
+}
+.back:hover{background:#DCEAF7}
+
+/* headings */
+h2{
+  font-size:17px;margin:52px 0 6px;font-weight:650;letter-spacing:-.2px;
+  display:flex;align-items:center;gap:9px;
+}
+h2 .n{
+  width:22px;height:22px;border-radius:6px;background:var(--accent);color:#fff;
+  font-size:11px;font-family:var(--fm);display:grid;place-items:center;font-weight:600;
+}
+h3{font-size:13.5px;margin:26px 0 8px;font-weight:650;color:var(--text)}
+p{margin:8px 0;font-size:13px;color:var(--text-2)}
+.lead{font-size:13.5px;color:var(--text-2);margin:4px 0 0}
+small{font-size:11.5px;color:var(--text-3)}
+
+/* card */
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:18px 20px;margin:14px 0;box-shadow:var(--sh-1);
+}
+.card.tight{padding:14px 16px}
+
+/* tables */
+table{border-collapse:collapse;width:100%;font-size:12.5px;margin:10px 0}
+th{
+  text-align:left;font-weight:600;font-size:11.5px;color:var(--text-3);
+  padding:7px 10px;border-bottom:1px solid var(--line-strong);white-space:nowrap;
+}
+td{padding:7px 10px;border-bottom:1px solid var(--line);color:var(--text-2);vertical-align:top}
+td.mono,th.mono{font-family:var(--fm);font-size:11.5px;letter-spacing:-.2px}
+tr:last-child td{border-bottom:0}
+td b{color:var(--text);font-weight:600}
+.tag{
+  display:inline-block;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:4px;
+  background:var(--track);color:var(--text-2);
+}
+.tag.g{background:var(--ok-soft);color:var(--ok)}
+.tag.r{background:var(--danger-soft);color:var(--danger)}
+.tag.b{background:var(--accent-soft);color:var(--accent-dark)}
+.tag.w{background:var(--warn-soft);color:var(--warn)}
+
+/* swatches */
+.grid{display:grid;gap:10px}
+.g6{grid-template-columns:repeat(6,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.sw{border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.sw .chip{height:46px}
+.sw .m{padding:6px 8px;background:var(--panel);font-size:10.5px;line-height:1.45}
+.sw .m b{display:block;font-size:11px;font-family:var(--fm);font-weight:600;color:var(--text)}
+.sw .m span{color:var(--text-3);font-family:var(--fm);font-size:10px}
+
+/* component demo helpers */
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{
+  height:30px;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:0 11px;border-radius:6px;font-size:12px;font-weight:500;border:1px solid transparent;
+  white-space:nowrap;cursor:default;
+}
+.btn.pri{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600;box-shadow:0 1px 2px rgba(12,68,124,.3)}
+.btn.ghost{background:var(--panel);border-color:var(--line-strong);color:var(--text-2)}
+.btn.dan{background:var(--panel);border-color:var(--danger-line);color:var(--danger)}
+.btn.quiet{color:var(--text-3)}
+.btn.hover{background:var(--accent-hi);border-color:var(--accent-hi)}
+.btn.ghost.hover{border-color:var(--accent-line);color:var(--accent-dark)}
+.btn.dis{opacity:.42}
+.btn.lg{height:36px;font-size:13px}
+.ic{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ic.f{fill:currentColor;stroke:none}
+
+.field{
+  height:28px;display:flex;align-items:center;gap:6px;padding:0 9px;width:100%;
+  border:1px solid var(--line-strong);border-radius:6px;background:#fff;font-size:12.5px;
+}
+.field.focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(24,95,165,.12)}
+.field .sfx{font-size:11px;color:var(--text-3);font-family:var(--fm)}
+.field input{border:0;outline:0;flex:1;min-width:0;width:100%;font:12.5px/1 var(--fm);background:none}
+.sw-ctrl{width:32px;height:18px;border-radius:9px;background:#D8E0EA;position:relative;flex:none;box-shadow:inset 0 1px 2px rgba(23,32,44,.1)}
+.sw-ctrl::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:7px;background:#fff;box-shadow:0 1px 2px rgba(23,32,44,.28)}
+.sw-ctrl.on{background:var(--accent)}
+.sw-ctrl.on::after{left:16px}
+.seg{display:inline-flex;padding:3px;background:var(--track);border-radius:7px;gap:3px}
+.seg i{height:24px;padding:0 12px;display:inline-flex;align-items:center;border-radius:5px;font-size:11.5px;font-style:normal;color:var(--text-2)}
+.seg i.on{background:#fff;color:var(--accent-dark);font-weight:650;box-shadow:var(--sh-1)}
+.pill{height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border-radius:13px;font-size:11.5px;font-weight:600}
+.dot{width:7px;height:7px;border-radius:4px;background:currentColor}
+.mono{font-family:var(--fm)}
+
+/* spec blocks */
+.kv{display:grid;grid-template-columns:120px 1fr;gap:0}
+.kv div{padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.kv div:nth-child(odd){color:var(--text-3);font-size:11.5px}
+.gridnote{
+  display:grid;grid-template-columns:repeat(2,1fr);gap:0;border:1px solid var(--line);
+  border-radius:8px;overflow:hidden;margin:10px 0;
+}
+.gridnote > div{padding:11px 14px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:12px;color:var(--text-2)}
+.gridnote > div:nth-child(2n){border-right:0}
+.gridnote b{display:block;font-size:12px;color:var(--text);margin-bottom:2px}
+
+.cal{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+.cal div{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:11.5px;color:var(--text-2)}
+.cal b{color:var(--text);font-family:var(--fm);font-size:14px;display:block;margin-bottom:1px}
+
+.note{
+  border-left:3px solid var(--accent-line);background:var(--accent-soft);
+  padding:10px 13px;border-radius:0 6px 6px 0;font-size:12.5px;color:var(--accent-dark);margin:12px 0;
+}
+.warnbox{
+  border-left:3px solid var(--danger-line);background:var(--danger-soft);
+  padding:10px 13px;border-radius:0 6px 6px 0;font-size:12.5px;color:#7C2222;margin:12px 0;
+}
+ul{margin:8px 0;padding-left:20px;font-size:13px;color:var(--text-2)}
+li{margin:4px 0}
+code{font-family:var(--fm);font-size:11.5px;background:var(--track);padding:1px 5px;border-radius:3px;color:var(--accent-dark)}
+.rule{height:1px;background:var(--line);margin:40px 0 0}
+footer{margin-top:54px;padding-top:16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--text-3);display:flex;gap:10px}
+</style>
+</head>
+<body>
+
+<div class="top"><div class="in">
+  <div class="tile"><svg class="ic" viewBox="0 0 16 16" style="width:16px;height:16px;stroke-width:1.9"><path d="M11.6 2.4 13.6 4.4 6.2 11.8 3.2 12.8 4.2 9.8z"/></svg></div>
+  <h1>InkPen v2 · 界面设计规范</h1>
+  <span class="sub">GRBL 写字机工作台 · 2026-11</span>
+  <span class="grow"></span>
+  <a class="back" href="inkpen-v2-prototype.html">← 返回可交互原型</a>
+</div></div>
+
+<div class="wrap">
+
+<h2><span class="n">01</span>设计目标</h2>
+<p class="lead">一句话：让人不假思索地找到「写什么、机器在哪、怎么开写」，并且永远不会点错按钮。</p>
+
+<div class="gridnote">
+  <div><b>① 频率分层，而不是功能平铺</b>按使用频次把一个功能放到正确的层级：常驻 / 页签 / 折叠。原来的六页签把 Jog、DRO、连接、书写任务和「电机方向」「G 代码模板」放在同一权重上，是最大的可用性问题。</div>
+  <div><b>② 状态必须显性</b>GRBL 有 8 个状态（Idle/Run/Hold/Jog/Alarm/Door/Home/Sleep），用户第一步永远是「机器现在能干什么」。状态放在顶栏常驻，颜色语义固定，可用性由状态决定而不是靠用户记忆。</div>
+  <div><b>③ 一个设置只有一个入口</b>同一件事不在两处出现。「画布显示格线」曾经同时在左栏和工具条上；「连接」同时在顶栏和右栏。重复即歧义。</div>
+  <div><b>④ 破坏性动作只有一个是红的</b>红色留给急停。停止、断开、清空都用中性色——红按钮一多，红就失效了。</div>
+</div>
+
+<h2><span class="n">02</span>信息架构</h2>
+<p>三栏对应三个问题，顺序就是操作顺序：左栏决定<strong>写什么</strong>，中栏看<strong>写成什么样</strong>，右栏控制<strong>怎么写</strong>。</p>
+
+<div class="card tight">
+<table>
+<tr><th style="width:96px">区域</th><th style="width:88px">宽度</th><th>内容</th><th style="width:120px">更新频率</th></tr>
+<tr><td><b>顶栏</b></td><td class="mono">52 · 全宽</td><td>品牌 · 状态胶囊 · 机型固件 · 端口波特率 · 连接/断开</td><td>低频，但必须时刻可见</td></tr>
+<tr><td><b>左栏</b></td><td class="mono">292</td><td>文稿 · 字库 · 预设（三页签）；底部钉住「生成 / 导出」</td><td>准备期</td></tr>
+<tr><td><b>中栏</b></td><td class="mono">1fr</td><td>视图切换 · 缩放翻页 · 纸张画布 · 运行进度条 · 状态条</td><td>全程</td></tr>
+<tr><td><b>右栏</b></td><td class="mono">344</td><td>DRO · Jog · 步长（常驻）＋ 机器/调平/高级（页签）＋ 主操作（钉底）</td><td>运行期高频</td></tr>
+</table>
+</div>
+
+<h3>关键位移：从页签到常驻</h3>
+<p>GRBL 生态（gSender、Candle、UGS、LaserGRBL）虽然界面各不相同，但五块信息是共同的：<strong>端口连接、DRO、Jog、路径预览、控制台</strong>。老手的肌肉记忆全落在这五块上。所以新方案不发明交互，只做位置重排：</p>
+<table>
+<tr><th>元素</th><th style="width:178px">原位置</th><th style="width:168px">新位置</th><th>理由</th></tr>
+<tr><td>连接 / 串口 / 波特率</td><td>右栏第 1 张卡片</td><td><b>顶栏常驻</b></td><td>启动第一件事；切到日志页也要能看见有没有连上</td></tr>
+<tr><td>DRO 坐标 + 归零</td><td>右栏「实时位置」卡</td><td><b>右栏顶部常驻</b></td><td>最高频读数，滚动出视野等于没有</td></tr>
+<tr><td>Jog + 步长</td><td>右栏「手动 jog」卡</td><td><b>DRO 正下方常驻</b></td><td>与 DRO 构成「看读数 → 动一下 → 再看」的闭环，必须相邻</td></tr>
+<tr><td>开始书写 / 暂停 / 停止</td><td>右栏底部卡片</td><td><b>钉死在右栏底部</b></td><td>主操作永远不进滚动区</td></tr>
+<tr><td>电机方向、宏、调平、参数、日志</td><td>与上面平级的页签</td><td><b>页签 + 二级页签</b></td><td>月级频率，不该占常驻空间</td></tr>
+</table>
+
+<h2><span class="n">03</span>设计令牌</h2>
+
+<h3>颜色</h3>
+<p>深蓝主色只承担三件事：主操作、选中态、焦点。<strong>所有语义色在浅底上的对比度都 ≥ 4.5:1</strong>（WCAG AA 正文标准），括号内为实测值。</p>
+<div class="grid g6">
+  <div class="sw"><div class="chip" style="background:#185FA5"></div><div class="m"><b>#185FA5</b><span>Accent · 6.5:1</span></div></div>
+  <div class="sw"><div class="chip" style="background:#0C447C"></div><div class="m"><b>#0C447C</b><span>AccentDark</span></div></div>
+  <div class="sw"><div class="chip" style="background:#E8F1FA"></div><div class="m"><b>#E8F1FA</b><span>AccentSoft</span></div></div>
+  <div class="sw"><div class="chip" style="background:#17202C"></div><div class="m"><b>#17202C</b><span>Text · 16.4:1</span></div></div>
+  <div class="sw"><div class="chip" style="background:#4C5866"></div><div class="m"><b>#4C5866</b><span>Text2 · 7.2:1</span></div></div>
+  <div class="sw"><div class="chip" style="background:#697686"></div><div class="m"><b>#697686</b><span>Text3 · 4.7:1</span></div></div>
+</div>
+<div class="grid g6" style="margin-top:10px">
+  <div class="sw"><div class="chip" style="background:#F4F6F9"></div><div class="m"><b>#F4F6F9</b><span>FormBg</span></div></div>
+  <div class="sw"><div class="chip" style="background:#FFFFFF;box-shadow:inset 0 0 0 1px #E3E9F1"></div><div class="m"><b>#FFFFFF</b><span>Panel</span></div></div>
+  <div class="sw"><div class="chip" style="background:#E3E9F1"></div><div class="m"><b>#E3E9F1</b><span>Border</span></div></div>
+  <div class="sw"><div class="chip" style="background:#D2DBE6"></div><div class="m"><b>#D2DBE6</b><span>BorderStrong</span></div></div>
+  <div class="sw"><div class="chip" style="background:#EEF2F7"></div><div class="m"><b>#EEF2F7</b><span>Track</span></div></div>
+  <div class="sw"><div class="chip" style="background:#FBFCFE;box-shadow:inset 0 0 0 1px #E3E9F1"></div><div class="m"><b>#FBFCFE</b><span>Panel2</span></div></div>
+</div>
+
+<h3 style="margin-top:24px">语义色</h3>
+<p>语义色一律<strong>成对使用</strong>：浅底 + 深字 + 同色描边，构成不依赖颜色的识别形状（色弱用户靠文字与形状也能分辨）。</p>
+<div class="grid g4">
+  <div class="sw"><div class="chip" style="background:#E4F4EE;border-bottom:1px solid #A9D8C8"></div><div class="m"><b style="color:#0F6E56">#0F6E56</b><span>待机 · 5.4:1</span></div></div>
+  <div class="sw"><div class="chip" style="background:#E8F1FA;border-bottom:1px solid #B7D3EA"></div><div class="m"><b style="color:#0C447C">#185FA5</b><span>运行 · 6.5:1</span></div></div>
+  <div class="sw"><div class="chip" style="background:#FBF0DE;border-bottom:1px solid #E4C89A"></div><div class="m"><b style="color:#8F5510">#8F5510</b><span>暂停 · 5.3:1</span></div></div>
+  <div class="sw"><div class="chip" style="background:#FBEAEA;border-bottom:1px solid #E2B4B4"></div><div class="m"><b style="color:#A32D2D">#A32D2D</b><span>报警 · 6.0:1</span></div></div>
+</div>
+<div class="note">
+  相对上一版修正了三处：<br>
+  ① 次要文字 <code>#7C8899</code> 在白底只有 3.9:1，达不到 AA，改为 <code>#697686</code>（4.7:1）；<br>
+  ② 警告色 <code>#BA7517</code> 在浅底上 4.2:1，压暗为 <code>#8F5510</code>（5.3:1）；<br>
+  ③ 正文主色由近黑改为 <code>#17202C</code>，纯黑在液晶屏上会振铃，略带蓝的深色与主色同族。
+</div>
+
+<h3>字号阶梯</h3>
+<table>
+<tr><th style="width:130px">令牌</th><th style="width:90px">字号 / 行高</th><th style="width:80px">字重</th><th>用途</th></tr>
+<tr><td class="mono">display</td><td class="mono">18 / 22</td><td>600</td><td>DRO 坐标数值（等宽）</td></tr>
+<tr><td class="mono">title</td><td class="mono">14 / 20</td><td>650</td><td>品牌名、空态标题</td></tr>
+<tr><td class="mono">body</td><td class="mono">12.5 / 18</td><td>400</td><td>正文、输入框、列表</td></tr>
+<tr><td class="mono">label</td><td class="mono">11.5 / 16</td><td>500</td><td>字段标签、按钮文字</td></tr>
+<tr><td class="mono">caption</td><td class="mono">11 / 15</td><td>400</td><td>说明、统计、状态条</td></tr>
+<tr><td class="mono">micro</td><td class="mono">10 / 14</td><td>600</td><td>徽标、轴标签（X/Y/Z）、单位</td></tr>
+</table>
+<p><small>中文界面不设 12px 以下的正文字号。等宽数字统一用 <code>Cascadia Mono → Consolas</code>，保证坐标跳动时字宽不变、不抖动。</small></p>
+
+<h3>间距与圆角</h3>
+<div class="cal">
+  <div><b>4</b>基准单位，所有间距取 4 的倍数</div>
+  <div><b>6</b>控件圆角 R-SM · 按钮 / 字段 / 输入框</div>
+  <div><b>8 / 10</b>卡片圆角 R-MD / R-LG</div>
+  <div><b>12</b>栏间距、页面内边距</div>
+  <div><b>10 / 11</b>卡片内边距（横 / 纵）</div>
+  <div><b>48</b>字段节奏：标签 17 + 字段 28 + 下距 3</div>
+</div>
+
+<h2><span class="n">04</span>栅格与响应</h2>
+<p>基准窗口 <code>1280 × 800</code>，最小可用 <code>1180 × 700</code>。三栏固定 + 中栏弹性，中栏永远先让位。</p>
+<div class="card tight">
+<table>
+<tr><th style="width:150px">断点</th><th style="width:170px">左 / 中 / 右</th><th>行为</th></tr>
+<tr><td class="mono">≥ 1280</td><td class="mono">292 / 1fr / 344</td><td>完整三栏，画布居中留白 16</td></tr>
+<tr><td class="mono">1100 – 1279</td><td class="mono">264 / 1fr / 320</td><td>两栏同步收窄；Jog 键 40 → 36；画布降到 45% 缩放</td></tr>
+<tr><td class="mono">900 – 1099</td><td class="mono">240 / 1fr / 56</td><td>右栏折叠成图标条，点开浮层（此时不推荐书写任务）</td></tr>
+<tr><td class="mono">高度 &lt; 740</td><td class="mono">—</td><td>左栏隐藏文稿输入区，只留版式；中栏画布优先</td></tr>
+</table>
+</div>
+<p><small>右栏宽度是算出来的：<code>3×轴卡片 101 + 2×间距 6 + 内边距 28 = 344</code>。左栏是 <code>278 内容 + 2×12 内边距 = 302</code> 收 10px 取整 292。改宽度先改这两个式子，不要拍脑袋。</small></p>
+
+<h2><span class="n">05</span>组件库</h2>
+
+<h3>按钮 · 四型四态</h3>
+<p>高度 28（默认）/ 30（工具栏）/ 36（主操作）。图标全部 16×16 手绘矢量，与文字间距 6。悬停只改背景与描边，<strong>不做位移</strong>——机床软件里会动的按钮会让人误以为机器在动。</p>
+<div class="card">
+  <div class="row" style="margin-bottom:12px">
+    <button class="btn pri"><svg class="ic f" viewBox="0 0 16 16"><path d="M5 3.3 12.4 8 5 12.7z"/></svg>开始书写</button>
+    <button class="btn ghost"><svg class="ic" viewBox="0 0 16 16"><path d="M2.6 4.6h10.8M2.6 11.4h10.8"/><circle cx="6" cy="4.6" r="1.5" fill="#fff"/><circle cx="10.4" cy="11.4" r="1.5" fill="#fff"/></svg>导出 .nc</button>
+    <button class="btn dan"><svg class="ic" viewBox="0 0 16 16"><path d="M4.5 4.5h7v7h-7z"/></svg>停止</button>
+    <button class="btn quiet">清除</button>
+    <button class="btn pri dis">生成 GCode</button>
+  </div>
+  <table>
+    <tr><th style="width:90px">类型</th><th style="width:120px">默认</th><th style="width:110px">悬停</th><th style="width:110px">按下</th><th>用途</th></tr>
+    <tr><td><b>Primary</b></td><td class="mono">#185FA5 / 白字</td><td class="mono">#1B6FBF</td><td class="mono">下沉 1px</td><td>每屏最多一个</td></tr>
+    <tr><td><b>Ghost</b></td><td class="mono">白底 / #D2DBE6 边</td><td class="mono">边 #B7D3EA，字 #0C447C</td><td class="mono">bg #E8F1FA</td><td>次级动作</td></tr>
+    <tr><td><b>Danger</b></td><td class="mono">白底 / #E2B4B4 边</td><td class="mono">bg #FBEAEA</td><td class="mono">边 #D79E9E</td><td>停止、清空</td></tr>
+    <tr><td><b>Quiet</b></td><td class="mono">无底无框</td><td class="mono">bg #EEF2F7</td><td class="mono">—</td><td>图标按钮、行内链接</td></tr>
+  </table>
+</div>
+<div class="warnbox"><b>红色只有一处。</b>急停是全界面唯一使用「实心红 + 警示图标」的按钮，位于右栏底部最后一行，永不被滚动、永不被遮挡、永不与其它按钮同色。停止按钮用 Danger 描边（中性白底），避免与急停抢注意力。</div>
+
+<h3>输入字段</h3>
+<p>圆角外壳 + 无边框内控件。这样做的原因很实际：WinForms 原生 <code>NumericUpDown</code> 在 125% / 150% DPI 下会把 1px 边框画成 2px 斜切凸起，而外壳是自绘的，永远 1px 6px 圆角，且所有字段左边缘严格对齐。</p>
+<div class="card">
+  <div class="grid g3" style="max-width:640px">
+    <div><div style="font-size:11.5px;color:var(--text-3);margin-bottom:5px">默认</div><div class="field"><input value="10.0"><span class="sfx">mm</span></div></div>
+    <div><div style="font-size:11.5px;color:var(--text-3);margin-bottom:5px">悬停</div><div class="field" style="border-color:#C2CCD9"><input value="1.0"><span class="sfx">mm</span></div></div>
+    <div><div style="font-size:11.5px;color:var(--text-3);margin-bottom:5px">聚焦</div><div class="field focus"><input value="6.0"><span class="sfx">mm</span></div></div>
+  </div>
+</div>
+
+<h3>开关与分段</h3>
+<div class="card">
+  <div class="row" style="gap:26px">
+    <span class="row" style="gap:9px;font-size:12px"><span class="sw-ctrl"></span>关</span>
+    <span class="row" style="gap:9px;font-size:12px"><span class="sw-ctrl on"></span>开</span>
+    <div class="seg"><i class="on">横排</i><i>竖排</i></div>
+    <div class="seg"><i>左对齐</i><i class="on">居中</i><i>两端对齐</i></div>
+    <div class="row" style="gap:3px"><i class="pill" style="background:var(--accent-soft);color:var(--accent-dark);font-style:normal;box-shadow:inset 0 0 0 1px var(--accent-line)">0.1</i><i class="pill" style="background:var(--accent-soft);color:var(--accent-dark);font-style:normal;font-weight:650;box-shadow:inset 0 0 0 1px var(--accent-line)">10</i><i class="pill" style="background:var(--track);color:var(--text-2);font-style:normal;font-family:var(--fm)">50</i></div>
+  </div>
+</div>
+<p><small>开关与分段互为补充：<strong>二元且立即生效</strong>用开关；<strong>2–4 个互斥选项且要看得到全部</strong>用分段。不要用下拉框装两个选项——多一次点击，还看不见另一项。</small></p>
+
+<h3>状态胶囊</h3>
+<p>顶栏唯一的全局状态指示。文字用「中文 + 固件英文」，因为 Alarm 这个词在 GRBL 文档里就是这么写的，老手一眼认出，新手也不会被纯英文挡住。</p>
+<div class="card">
+  <div class="row" style="gap:9px">
+    <span class="pill" style="background:var(--ok-soft);color:var(--ok);box-shadow:inset 0 0 0 1px var(--ok-line)"><i class="dot"></i>待机 Idle</span>
+    <span class="pill" style="background:var(--accent-soft);color:var(--accent-dark);box-shadow:inset 0 0 0 1px var(--accent-line)"><i class="dot"></i>书写中 Run</span>
+    <span class="pill" style="background:var(--warn-soft);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn-line)"><i class="dot"></i>已暂停 Hold</span>
+    <span class="pill" style="background:var(--danger-soft);color:var(--danger);box-shadow:inset 0 0 0 1px var(--danger-line)"><i class="dot"></i>报警 Alarm</span>
+    <span class="pill" style="background:#EDF1F5;color:var(--text-3);box-shadow:inset 0 0 0 1px #DCE3EC"><i class="dot"></i>未连接</span>
+  </div>
+</div>
+
+<h2><span class="n">06</span>状态机</h2>
+<p>这一节是整套设计的核心。红色不是装饰，是权限：下面这张表决定每个状态下哪些控件可用、哪些变灰。</p>
+<div class="card tight">
+<table>
+<tr><th style="width:110px">固件状态</th><th style="width:120px">显示</th><th style="width:90px">颜色</th><th style="width:150px">允许</th><th>界面反应</th></tr>
+<tr><td class="mono">Idle</td><td><b>待机 Idle</b></td><td><span class="tag g">绿</span></td><td>全部</td><td>常态</td></tr>
+<tr><td class="mono">Run</td><td><b>书写中 Run</b></td><td><span class="tag b">蓝 · 呼吸</span></td><td>暂停 / 停止 / 倍率</td><td>画布出十字笔位；底部出进度条；左栏编辑区收成锁定条；<code>开始书写</code>变灰</td></tr>
+<tr><td class="mono">Jog</td><td><b>移动中 Jog</b></td><td><span class="tag w">琥珀</span></td><td>停止</td><td>Jog 键保持高亮，其它动作暂灰</td></tr>
+<tr><td class="mono">Hold:0 / 1</td><td><b>已暂停 Hold</b></td><td><span class="tag w">琥珀</span></td><td>继续 / 停止</td><td>进度条转琥珀；<code>继续</code>提为主按钮</td></tr>
+<tr><td class="mono">Alarm</td><td><b>报警 Alarm</b></td><td><span class="tag r">红</span></td><td>解锁 <code>$X</code> / 软复位</td><td>画布上方出红色横幅并内嵌两个动作；Jog 全部变灰；状态条圆点变红</td></tr>
+<tr><td class="mono">Door</td><td><b>门开 Door</b></td><td><span class="tag r">红</span></td><td>解锁</td><td>同 Alarm，文案换成「安全门已打开」</td></tr>
+<tr><td class="mono">Home</td><td><b>归零中 Home</b></td><td><span class="tag b">蓝</span></td><td>停止</td><td>DRO 数值变灰并显示 <code>—</code>，避免误读中间值</td></tr>
+<tr><td class="mono">Sleep</td><td><b>休眠 Sleep</b></td><td><span class="tag">灰</span></td><td>复位唤醒</td><td>胶囊变灰并提示「点任意处唤醒」</td></tr>
+<tr><td class="mono">—</td><td><b>未连接</b></td><td><span class="tag">灰</span></td><td>连接</td><td>Jog、主操作、急停全部变灰；DRO 保留上次读数并转灰</td></tr>
+</table>
+</div>
+<div class="note"><b>报警横幅的原则：</b>错误信息、原因、出路三者必须在同一屏内。ALARM 1 只告诉用户「硬限位」，用户还得去别处找怎么解锁——所以横幅右侧直接放「解锁 $X」与「软复位」。这是 GRBL 客户端长期缺失的一环。</div>
+
+<h2><span class="n">07</span>键盘映射</h2>
+<p>Jog 面板把方向键画在屏幕上，是为了让键盘映射<strong>可被发现</strong>——每个方向键下方都印着对应的键名。这一条来自对 CNС 老手的观察：他们从不点方向键，只用键盘。</p>
+<div class="card tight">
+<table>
+<tr><th style="width:170px">按键</th><th style="width:150px">动作</th><th>说明</th></tr>
+<tr><td class="mono">↑ ↓ ← →</td><td>Jog X/Y</td><td>按当前步长走一步，长按连续点动</td></tr>
+<tr><td class="mono">PgUp / PgDn</td><td>Jog Z+/Z−</td><td>也接受 <code>+</code> / <code>-</code></td></tr>
+<tr><td class="mono">1 – 5</td><td>切换步长</td><td>0.1 / 1 / 10 / 50 / 100 mm</td></tr>
+<tr><td class="mono">空格</td><td>暂停 / 继续</td><td>运行期唯一高频键，放最大键上</td></tr>
+<tr><td class="mono">Esc</td><td>停止</td><td>需二次确认（首次按下变为「再按一次停止」）</td></tr>
+<tr><td class="mono">Ctrl + Z</td><td>解锁 <code>$X</code></td><td>仅 Alarm 状态生效</td></tr>
+<tr><td class="mono">Ctrl + O / S</td><td>打开 / 导出</td><td>系统约定</td></tr>
+<tr><td class="mono">F5</td><td>生成 GCode 预览</td><td>与「生成」按钮等效</td></tr>
+</table>
+</div>
+
+<h2><span class="n">08</span>易用性与可达性</h2>
+<div class="gridnote">
+  <div><b>触达尺寸</b>Jog 键 40×40，主按钮高 36，最小可点控件 26×26。低于这个尺寸在 125% DPI 的笔电上会点空。</div>
+  <div><b>焦点可见</b>键盘焦点用 2px <code>#185FA5</code> 外描边 + 2px 偏移，不复用悬停态。Tab 序严格按视觉顺序：左 → 中 → 右。</div>
+  <div><b>不靠颜色单独表意</b>状态胶囊同时有文字、圆点、底色三层编码；报警除了红还有三角图标与文字原因。</div>
+  <div><b>错误预防</b>停止与急停都要二次确认；<code>$X</code> 解锁只在 Alarm 下出现；导出前若未生成，按钮直接变灰而不是弹错。</div>
+  <div><b>空态即引导</b>没文稿时画布不是空白，而是三个入口（打开 / 粘贴 / 快捷键），把「下一步做什么」写在最显眼处。</div>
+  <div><b>数字不抖</b>DRO 用等宽字体 + 固定列宽 + 右对齐，坐标变化时不会出现整行重排的闪烁。</div>
+</div>
+
+<h2><span class="n">09</span>WinForms 实施映射</h2>
+<p>本方案按 <code>.NET Framework 4.8 / C# 5 / 零外部依赖</code> 的现有约束设计，全部可用自绘实现。下表是每一条视觉规格的落地方式与风险等级。</p>
+<div class="card tight">
+<table>
+<tr><th style="width:150px">设计规格</th><th style="width:262px">实现方式</th><th style="width:70px">风险</th><th>备注</th></tr>
+<tr><td>圆角卡片 / 按钮</td><td><code>GraphicsPath</code> + <code>FillPath</code>（已有 <code>FillRound</code>）</td><td><span class="tag g">低</span></td><td>抗锯齿用 <code>SmoothingMode.AntiAlias</code></td></tr>
+<tr><td>卡片投影</td><td>不能真投影：1px 边框 + 底部 2px 渐变色带模拟</td><td><span class="tag w">中</span></td><td>GDI+ 无模糊滤镜，别硬做</td></tr>
+<tr><td>图标</td><td>16×16 坐标系手绘 <code>GraphicsPath</code>，按 rect 缩放</td><td><span class="tag g">低</span></td><td>不用图标字体，DPI 安全</td></tr>
+<tr><td>等宽坐标</td><td><code>Consolas</code> 9.5pt + <code>TextRenderer.DrawText</code> 右对齐</td><td><span class="tag g">低</span></td><td>禁用 <code>Graphics.DrawString</code>（字宽不准）</td></tr>
+<tr><td>状态呼吸动画</td><td><code>Timer</code> 40ms 改圆点 alpha</td><td><span class="tag w">中</span></td><td>只在 Run 时启动，Idle 停掉省 CPU</td></tr>
+<tr><td>分段控件</td><td>自绘 <code>Panel</code> + 命中测试换取选中索引</td><td><span class="tag g">低</span></td><td>不要用 <code>TabControl</code>（见下）</td></tr>
+<tr><td>输入框外壳</td><td><code>Panel</code> 画边框 + 内嵌 <code>BorderStyle=None</code> 真控件</td><td><span class="tag g">低</span></td><td>所有字段左缘才能严格对齐</td></tr>
+<tr><td>页签</td><td><code>TabControl</code> + <code>DrawMode=OwnerDrawFixed</code> + 双缓冲</td><td><span class="tag r">高</span></td><td><b>绝不能开 <code>UserPaint</code></b>，否则页签与页面主体全部不绘制</td></tr>
+<tr><td>滚动区</td><td><code>Panel.AutoScroll</code>，切页时 <code>AutoScrollPosition=(0,0)</code></td><td><span class="tag w">中</span></td><td>否则首帧会把焦点控件滚进视野，标题被切</td></tr>
+<tr><td>DPI 缩放</td><td>96dpi 为基准，统一乘 <code>DeviceDpi/96f</code>，不用 <code>AutoScaleMode.Font</code></td><td><span class="tag r">高</span></td><td>字体缩放会让 28px 字段变成 26 或 31</td></tr>
+<tr><td>自绘背景</td><td><code>OnPaint</code> 首句必须 <code>UiPaint.Clear</code></td><td><span class="tag r">高</span></td><td><code>UserPaint|AllPaintingInWmPaint</code> 下框架不擦背景，会叠影</td></tr>
+</table>
+</div>
+
+<h2><span class="n">10</span>相对上一版的改动</h2>
+<table>
+<tr><th style="width:34px">#</th><th style="width:220px">改动</th><th>解决什么</th></tr>
+<tr><td class="mono">1</td><td>DRO / Jog 提为常驻</td><td>原来要滚右栏才能看到坐标，边调边看要来回滚</td></tr>
+<tr><td class="mono">2</td><td>连接移到顶栏</td><td>原来连没连上要切回「机器」页签才知道</td></tr>
+<tr><td class="mono">3</td><td>6 页签 → 3 页签 + 二级</td><td>页签宽度被压到 40px，文字靠猜；同权重卡片堆叠</td></tr>
+<tr><td class="mono">4</td><td>左右主操作都钉底</td><td>「生成」和「开始书写」原来会被滚出视野</td></tr>
+<tr><td class="mono">5</td><td>运行期左栏收成锁定条</td><td>书写时改不了文稿，却仍占满一屏可编辑控件</td></tr>
+<tr><td class="mono">6</td><td>红色单一化</td><td>原来停止、断开、报警三处红，急停不突出</td></tr>
+<tr><td class="mono">7</td><td>空态引导</td><td>没文稿时画布只是一张白纸，不知道从哪开始</td></tr>
+<tr><td class="mono">8</td><td>报警横幅内嵌解锁</td><td>原来只显示 ALARM 文本，解锁藏在别处</td></tr>
+<tr><td class="mono">9</td><td>状态色语义固定</td><td>原来状态是纯文本，颜色不区分含义</td></tr>
+<tr><td class="mono">10</td><td>对比度与字号修正</td><td>次要文字 3.9:1 不达 AA；卡片标题与正文同号，无层级</td></tr>
+</table>
+
+<hr class="rule">
+<footer>
+  <span>InkPen v2 设计规范</span><span>·</span><span>1280×800 · 96dpi 基准</span><span>·</span>
+  <span>配色对比度按 WCAG 2.1 AA 校验</span><span>·</span>
+  <a class="back" style="margin-left:auto" href="inkpen-v2-prototype.html">查看原型</a>
+</footer>
+</div>
+</body>
+</html>
