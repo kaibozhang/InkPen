@@ -6,47 +6,65 @@ using System.Windows.Forms;
 namespace InkPen.UI
 {
     /// <summary>
-    /// 统一视觉主题。集中放颜色与绘制工具，避免每个控件各写一套灰阶导致界面花掉。
+    /// 统一视觉主题（深蓝工业仪表风）。
     ///
-    /// 配色思路：
-    ///   · 画布用深色（视觉焦点留给纸和笔迹，发光笔尖才看得清）
-    ///   · 面板用浅色（长时间看表格/日志不刺眼，也不会出现深色主题常见的「某些控件白底黑字」）
-    ///   · 强调色只有两个：青（运行/正常）与琥珀（暂停/待确认），红色只留给急停与错误
+    /// 分两层，互不干扰：
+    ///   · 画布层（深）—— 中栏纸面区，视觉焦点留在纸和笔迹上，笔尖光晕才看得清
+    ///   · 面板层（浅）—— 左右两栏，长时间看表格/日志不刺眼
+    ///
+    /// 强调色只有一个：深蓝 #185FA5（主操作/选中）。
+    /// 语义色只在有语义时出现：绿=连接正常/完成，琥珀=待确认，红=停止/错误。
+    /// 早期版本每个控件各写一套灰阶，结果同一页里出现 6 种不同的浅灰边框，
+    /// 界面看起来"花"其实不是配色多，而是没有统一令牌。改这里一处就够。
     /// </summary>
     public static class Theme
     {
-        // 画布（深）
-        public static readonly Color CanvasBgTop = Color.FromArgb(18, 23, 32);
-        public static readonly Color CanvasBgBottom = Color.FromArgb(27, 34, 46);
-        public static readonly Color CanvasDot = Color.FromArgb(38, 47, 62);
+        // ---------- 画布（深） ----------
+        public static readonly Color CanvasBgTop = Color.FromArgb(14, 20, 29);
+        public static readonly Color CanvasBgBottom = Color.FromArgb(21, 29, 40);
+        public static readonly Color CanvasDot = Color.FromArgb(34, 44, 58);
 
         // 纸张
         public static readonly Color Paper = Color.FromArgb(253, 252, 248);
-        public static readonly Color PaperShadow = Color.FromArgb(70, 0, 0, 0);
+        public static readonly Color PaperShadow = Color.FromArgb(80, 0, 0, 0);
         public static readonly Color PaperEdge = Color.FromArgb(120, 130, 146);
         public static readonly Color GridLine = Color.FromArgb(70, 118, 168, 214);
 
         // 笔迹
-        public static readonly Color InkDone = Color.FromArgb(30, 36, 46);
+        public static readonly Color InkDone = Color.FromArgb(28, 34, 44);
         public static readonly Color InkTodo = Color.FromArgb(105, 190, 200, 208);
         public static readonly Color Travel = Color.FromArgb(70, 150, 165, 185);
 
-        // 强调
-        public static readonly Color Accent = Color.FromArgb(38, 196, 176);
-        public static readonly Color AccentDim = Color.FromArgb(90, 38, 196, 176);
-        public static readonly Color Warm = Color.FromArgb(238, 168, 72);
-        public static readonly Color Danger = Color.FromArgb(214, 74, 66);
-        public static readonly Color Ok = Color.FromArgb(46, 158, 110);
+        // ---------- 强调 ----------
+        public static readonly Color Accent = Color.FromArgb(24, 95, 165);       // #185FA5
+        public static readonly Color AccentDark = Color.FromArgb(12, 68, 124);   // #0C447C
+        public static readonly Color AccentSoft = Color.FromArgb(230, 241, 251); // #E6F1FB
+        public static readonly Color AccentDim = Color.FromArgb(90, 24, 95, 165);
 
-        // 面板（浅）
+        public static readonly Color Ok = Color.FromArgb(15, 110, 86);           // #0F6E56
+        public static readonly Color OkSoft = Color.FromArgb(225, 245, 238);     // #E1F5EE
+        public static readonly Color Warm = Color.FromArgb(186, 117, 23);        // #BA7517
+        public static readonly Color WarmSoft = Color.FromArgb(250, 238, 218);   // #FAEEDA
+        public static readonly Color Danger = Color.FromArgb(163, 45, 45);       // #A32D2D
+        public static readonly Color DangerSoft = Color.FromArgb(252, 235, 235); // #FCEBEB
+
+        // ---------- 面板（浅） ----------
         public static readonly Color Panel = Color.White;
-        public static readonly Color FormBg = Color.FromArgb(238, 241, 246);
-        public static readonly Color CardBg = Color.FromArgb(249, 250, 253);
-        public static readonly Color Border = Color.FromArgb(214, 221, 232);
-        public static readonly Color Text = Color.FromArgb(52, 60, 74);
-        public static readonly Color TextDim = Color.FromArgb(112, 122, 138);
-        public static readonly Color BarBg = Color.FromArgb(250, 251, 253);
+        public static readonly Color FormBg = Color.FromArgb(234, 238, 244);     // #EAEEF4
+        public static readonly Color CardBg = Color.FromArgb(247, 249, 252);     // #F7F9FC
+        public static readonly Color Border = Color.FromArgb(216, 224, 234);     // #D8E0EA
+        public static readonly Color BorderStrong = Color.FromArgb(194, 204, 218);
+        public static readonly Color Text = Color.FromArgb(23, 32, 44);          // #17202C
+        public static readonly Color TextMid = Color.FromArgb(74, 85, 99);       // #4A5563
+        public static readonly Color TextDim = Color.FromArgb(124, 136, 153);    // #7C8899
+        public static readonly Color TextFaint = Color.FromArgb(160, 171, 185);
+        public static readonly Color BarBg = Color.White;
 
+        // 圆角令牌：控件 6，卡片 10
+        public const int RControl = 6;
+        public const int RCard = 10;
+
+        /// <summary>正文字体。不假设字体族存在，逐个降级（GRBL-Plotter #477 类崩溃的成因）。</summary>
         public static Font Font(float size, FontStyle style)
         {
             try { return new Font("Microsoft YaHei", size, style); }
@@ -108,7 +126,20 @@ namespace InkPen.UI
             }
         }
 
-        /// <summary>给按钮套上统一的扁平外观 + 悬停/按下反馈。</summary>
+        public static Color Blend(Color a, Color b, double k)
+        {
+            if (k < 0) k = 0; else if (k > 1) k = 1;
+            return Color.FromArgb(
+                (int)(a.A + (b.A - a.A) * k),
+                (int)(a.R + (b.R - a.R) * k),
+                (int)(a.G + (b.G - a.G) * k),
+                (int)(a.B + (b.B - a.B) * k));
+        }
+
+        /// <summary>
+        /// 扁平按钮外观（保留给旧调用点）。主界面统一用 UiButton 自绘，
+        /// 这里仍在是因为 ProbeDialog 等小窗还挂系统 Button。
+        /// </summary>
         public static void StyleButton(Button b, Color back, Color fore, Color border)
         {
             b.FlatStyle = FlatStyle.Flat;
@@ -124,25 +155,13 @@ namespace InkPen.UI
             b.MouseDown += delegate { b.BackColor = press; };
             b.MouseUp += delegate { b.BackColor = hover; };
         }
-
-        public static Color Blend(Color a, Color b, double k)
-        {
-            if (k < 0) k = 0; else if (k > 1) k = 1;
-            return Color.FromArgb(
-                (int)(a.A + (b.A - a.A) * k),
-                (int)(a.R + (b.R - a.R) * k),
-                (int)(a.G + (b.G - a.G) * k),
-                (int)(a.B + (b.B - a.B) * k));
-        }
     }
 
     /// <summary>
     /// 工具栏渲染器。
     ///
-    /// 默认的 <see cref="ToolStripProfessionalRenderer"/> 在浅色工具栏上会把「按下」画成
-    /// 系统蓝框、把「选中」画成灰色渐变，与我们自己的青/琥珀配色打架——截图里最明显的症状是
-    /// 「空程」「笔位」两个 CheckOnClick 按钮看起来像被蓝色框圈住，而旁边的「播放」只是纯文字。
-    /// 这里统一成：悬停 = 极淡青底，选中 = 淡青底 + 细边，标签类文字压暗一档做层次。
+    /// 默认的 ToolStripProfessionalRenderer 会画系统蓝框和灰色渐变，跟深蓝主色打架。
+    /// 这里统一成：悬停 = 极淡底，选中 = 淡蓝底 + 深蓝字。
     /// </summary>
     public class BarRenderer : ToolStripProfessionalRenderer
     {
@@ -166,11 +185,13 @@ namespace InkPen.UI
             if (b == null) return;
             if (!b.Checked && !b.Pressed && !b.Selected) return;
 
-            RectangleF r = new RectangleF(1, 2, b.Width - 2, b.Height - 4);
-            double k = b.Checked ? 0.80 : (b.Pressed ? 0.70 : 0.90);
-            Theme.FillRound(e.Graphics, r, 5, Theme.Blend(Theme.Accent, Theme.BarBg, k));
-            Theme.DrawRound(e.Graphics, r, 5,
-                Theme.Blend(Theme.Accent, Theme.BarBg, b.Checked ? 0.45 : 0.72), 1f);
+            RectangleF r = new RectangleF(1, 3, b.Width - 2, b.Height - 6);
+            if (b.Checked)
+                Theme.FillRound(e.Graphics, r, Theme.RControl, Theme.AccentSoft);
+            else if (b.Pressed)
+                Theme.FillRound(e.Graphics, r, Theme.RControl, Theme.Blend(Theme.AccentSoft, Theme.Border, 0.45));
+            else
+                Theme.FillRound(e.Graphics, r, Theme.RControl, Color.FromArgb(243, 246, 250));
         }
 
         protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
@@ -178,12 +199,17 @@ namespace InkPen.UI
             Rectangle r = e.Item.Bounds;
             int x = r.Left + r.Width / 2;
             using (Pen p = new Pen(Theme.Border))
-                e.Graphics.DrawLine(p, x, r.Top + 5, x, r.Bottom - 5);
+                e.Graphics.DrawLine(p, x, r.Top + 8, x, r.Bottom - 8);
         }
 
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
-            e.TextColor = (!e.Item.Enabled || e.Item is ToolStripLabel) ? Theme.TextDim : Theme.Text;
+            if (e.Item is ToolStripLabel)
+                e.TextColor = Theme.TextDim;
+            else if (e.Item is ToolStripButton)
+                e.TextColor = ((ToolStripButton)e.Item).Checked ? Theme.AccentDark : Theme.TextMid;
+            else
+                e.TextColor = e.Item.Enabled ? Theme.Text : Theme.TextFaint;
             base.OnRenderItemText(e);
         }
     }

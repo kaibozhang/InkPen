@@ -260,15 +260,17 @@ def check_smoke():
         os.makedirs(os.path.dirname(SHOT), exist_ok=True)
         img.save(SHOT)
 
-        must = [u"\u8f93\u5165\u6587\u7a3f",                 # 输入文稿
+        # 卡片标题是自绘文字，不再是子窗口，所以这里只挑"真实存在的控件"。
+        # 否则界面一改版这条断言就误报，而它本该守的是"主功能控件都建出来了"。
+        must = [u"\u628a\u683c\u7ebf\u5199\u5165 GCode",         # 把格线写入 GCode
                 u"\u7a3f\u7eb8\u6a21\u677f",                 # 稿纸模板
                 u"\u751f\u6210 GCode / \u9884\u89c8",         # 生成 GCode / 预览
                 u"\u5bfc\u51fa GCode \u6587\u4ef6",           # 导出 GCode 文件
                 u"\u5f00\u59cb\u4e66\u5199",                 # 开始书写
                 u"\u8fde\u63a5",                             # 连接
-                u"\u5b9e\u65f6\u72b6\u6001 DRO",             # 实时状态 DRO
-                u"\u5b8f\u6309\u94ae",                       # 宏按钮
-                u"\u624b\u52a8 jog / \u56de\u96f6"]           # 手动 jog / 回零
+                u"\u4e32\u53e3",                             # 串口
+                u"\u6025\u505c",                                # 急停
+                u"\u8bd5\u7b14"]                              # 试笔
         missing = [m for m in must if not any(m in k for k in kids)]
 
         rgb = img.convert("RGB")
@@ -395,9 +397,9 @@ def check_level():
     p, main, _ = launch("--tab=level")
     try:
         kids = [t for _, _, t in children(main)]
-        must = [u"\u63a2\u6d4b\u53c2\u6570",        # 探测参数
-                u"\u63a5\u89e6\u5f0f\u63a2\u6d4b",  # 接触式探测
-                u"\u9ad8\u5ea6\u56fe"]              # 高度图
+        must = [u"\u56db\u5468\u5185\u7f29",        # 四周内缩
+                u"\u5f00\u59cb\u63a2\u6d4b",        # 开始探测
+                u"\u5355\u70b9\u5bf9\u5200"]        # 单点对刀
         missing = [m for m in must if not any(m in k for k in kids)]
 
         img = grab_window(main)

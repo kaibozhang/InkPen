@@ -400,15 +400,23 @@ namespace InkPen.UI
 
             // GRBL 事件
             _grbl.OnLog += delegate(string s) { Log(s); };
-            _grbl.OnMachineInfo += delegate(string name) { Ui(delegate { UpdateDirLock(); }); };
+            _grbl.OnMachineInfo += delegate(string name) { Ui(delegate { if (_hdr != null) _hdr.SetMachine(name); UpdateDirLock(); }); };
             _grbl.OnError += delegate(string s) { Log("!! " + s); };
             _grbl.OnConnectionChanged += delegate(bool open)
             {
                 Ui(delegate
                 {
                     _btnConnect.Text = open ? "断开" : "连接";
-                    _statusLbl.Text = "状态：" + (open ? "已连接" : "未连接");
-                    _statusLbl.ForeColor = open ? Theme.Ok : Color.FromArgb(160, 70, 60);
+                    UiButton ub = _btnConnect as UiButton;
+                    if (ub != null) { ub.Kind = open ? UiKind.Ghost : UiKind.Primary; ub.Invalidate(); }
+                    _statusLbl.Text = open ? "已连接" : "未连接";
+                    _statusLbl.ForeColor = open ? Theme.Ok : Theme.Danger;
+                    if (_hdr != null)
+                    {
+                        string port = Convert.ToString(_portCombo.Text);
+                        string baud = Convert.ToString(_baudCombo.Text);
+                        _hdr.SetConn(open, open ? (port + " · " + baud) : "未连接");
+                    }
                     _bar.Connected = open;
                     _bar.Invalidate();
                     if (!open)
@@ -739,7 +747,20 @@ namespace InkPen.UI
             _logBox.AppendText(s + "\n");
             _logBox.SelectionLength = 0;
             _logBox.SelectionStart = _logBox.TextLength;
-            _logBox.ScrollToCaret();
+            // RichTextBox 的 ScrollToCaret 会把光标顶到视口底部，即使内容只有两行——
+            // 结果日志框整片空白、文字挤在中间。内容没溢出时改为钉在顶部。
+            try
+            {
+                Point cp = _logBox.GetPositionFromCharIndex(_logBox.TextLength);
+                if (cp.Y >= 0 && cp.Y < _logBox.ClientSize.Height - 18)
+                {
+                    _logBox.Select(0, 0);
+                    _logBox.ScrollToCaret();
+                    _logBox.SelectionStart = _logBox.TextLength;
+                }
+                else _logBox.ScrollToCaret();
+            }
+            catch { _logBox.ScrollToCaret(); }
         }
 
         private static bool IsErrorLine(string s)
