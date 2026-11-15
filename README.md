@@ -13,7 +13,7 @@
 
 ![调平页：网格探测参数、单点对刀、高度图热力图](docs/gui_level.png)
 
-> **下一代界面方案（v2）** 已完成设计与可点击原型：`docs/design/inkpen-v2-prototype.html`（含待机/书写中/报警/空态/离线五态演示）与 `docs/design/inkpen-v2-spec.html`（设计令牌、组件库、GRBL 状态机、键盘映射、WinForms 落地映射）。浏览器直接打开即可。
+> **界面视觉（v3）**：三案交叉评审见 `docs/design/review.html`，终稿 `docs/design/final.html`（精密仪器方向），视觉契约 `docs/design/design-contract.md`。三案原型：`dir-a-instrument.html` / `dir-b-blackbox.html` / `dir-c-paper.html`。浏览器直接打开即可。
 
 ---
 

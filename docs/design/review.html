@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>InkPen · 视觉方向评审 · 三案</title>
+<style>
+:root{
+  --bg:#EFEEE9;
+  --card:#FFFFFF;
+  --ink:#15171A;
+  --ink-2:#4E5359;
+  --ink-3:#71767C;
+  --rule:#DBD9D2;
+  --rule-2:#C6C3BA;
+  --seal:#A63A2A;
+  --sans:-apple-system,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+  --mono:"Cascadia Mono",Consolas,"SF Mono",monospace;
+  --serif:"Songti SC","STSong","Noto Serif SC",SimSun,serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 32px 90px}
+
+header{padding:46px 0 26px;border-bottom:1px solid var(--rule-2)}
+.kicker{font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--seal);text-transform:uppercase}
+h1{font-family:var(--serif);font-size:34px;font-weight:600;margin:12px 0 10px;letter-spacing:.01em;line-height:1.25}
+.lead{font-size:14px;color:var(--ink-2);max-width:720px;line-height:1.85;margin:0}
+.meta-row{display:flex;gap:22px;margin-top:22px;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.06em;flex-wrap:wrap}
+.meta-row b{color:var(--ink-2);font-weight:500}
+
+h2{font-size:15px;font-weight:600;margin:52px 0 4px;letter-spacing:.02em;display:flex;align-items:baseline;gap:10px}
+h2 .n{font-family:var(--mono);font-size:10px;color:var(--seal);letter-spacing:.08em}
+h2 .en{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.16em;text-transform:uppercase;font-weight:400}
+p{font-size:13px;color:var(--ink-2);line-height:1.8;margin:10px 0}
+
+/* 三案并排 */
+.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:20px}
+.dir{background:var(--card);border:1px solid var(--rule);display:flex;flex-direction:column}
+.dir.pick{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.thumb{position:relative;overflow:hidden;border-bottom:1px solid var(--rule);background:#111}
+.thumb img{width:100%;display:block}
+.thumb .badge{
+  position:absolute;left:0;top:0;background:var(--ink);color:#fff;
+  font-family:var(--mono);font-size:9px;letter-spacing:.14em;padding:3px 8px;
+}
+.dir.pick .thumb .badge{background:var(--seal)}
+.body{padding:14px 15px 16px;display:flex;flex-direction:column;flex:1}
+.dir h3{font-size:14px;margin:0 0 3px;font-weight:600;letter-spacing:.01em}
+.dir .zh{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--ink-3);text-transform:uppercase;margin-bottom:9px}
+.dir .desc{font-size:11.5px;line-height:1.75;color:var(--ink-2);margin:0 0 11px}
+.sw{display:flex;gap:0;height:16px;margin-bottom:10px;border:1px solid var(--rule)}
+.sw i{flex:1}
+.specs{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);line-height:1.9;letter-spacing:.02em;margin-bottom:12px}
+.specs b{color:var(--ink-2);font-weight:500}
+.open{
+  margin-top:auto;display:block;text-align:center;text-decoration:none;color:var(--ink-2);
+  border:1px solid var(--rule-2);font-size:11px;padding:7px;letter-spacing:.04em;
+}
+.open:hover{border-color:var(--ink);color:var(--ink)}
+
+/* 评分表 */
+table{border-collapse:collapse;width:100%;margin-top:14px;font-size:12.5px;background:var(--card)}
+th{text-align:left;font-weight:600;font-size:10.5px;letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase;
+   padding:10px 12px;border-bottom:1px solid var(--rule-2);white-space:nowrap}
+td{padding:11px 12px;border-bottom:1px solid var(--rule);color:var(--ink-2);vertical-align:middle}
+td.dim{color:var(--ink-3);font-size:11.5px}
+tr:last-child td{border-bottom:0}
+.score{font-family:var(--mono);font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums}
+.bar{display:inline-block;width:62px;height:3px;background:var(--rule);vertical-align:middle;margin-left:8px;position:relative}
+.bar i{position:absolute;left:0;top:0;height:3px;background:var(--ink)}
+td.win{background:#FAF9F4}
+td.win .score{color:var(--seal);font-weight:600}
+
+/* 结论 */
+.verdict{margin-top:20px;background:var(--card);border:1px solid var(--rule);border-left:3px solid var(--seal);padding:20px 24px}
+.verdict h3{margin:0 0 8px;font-size:14px}
+.verdict p{font-size:13px;margin:0 0 10px}
+.verdict p:last-child{margin-bottom:0}
+.verdict code{font-family:var(--mono);font-size:11.5px;background:#F4F2EC;padding:1px 5px}
+
+ol,ul{font-size:13px;color:var(--ink-2);line-height:1.85;padding-left:20px;margin:10px 0}
+li{margin:6px 0}
+li b{color:var(--ink);font-weight:600}
+
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+.fix{background:var(--card);border:1px solid var(--rule);padding:13px 15px}
+.fix .n{font-family:var(--mono);font-size:9.5px;color:var(--seal);letter-spacing:.1em}
+.fix b{display:block;font-size:12.5px;margin:5px 0 4px}
+.fix p{font-size:11.5px;margin:0;line-height:1.7}
+
+footer{margin-top:60px;padding-top:16px;border-top:1px solid var(--rule-2);
+  font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.08em;display:flex;gap:12px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">InkPen · visual direction review</div>
+  <h1>同一个屏幕，三种视觉语言</h1>
+  <p class="lead">
+    三案使用完全相同的内容与信息架构（1280×800，左文稿、中纸面、右控制），只替换视觉语言。
+    这样比较的是「贵不贵」，而不是「功能多不多」。三案由三个设计角色并行产出，我做交叉评审与终稿合成。
+  </p>
+  <div class="meta-row">
+    <span><b>评审对象</b> 桌面 CNC 上位机 · GRBL 1.3a</span>
+    <span><b>基准画面</b> 1280 × 800 · 100%</span>
+    <span><b>共同禁令</b> 大圆角 / 彩色投影 / 渐变按钮 / 插画</span>
+  </div>
+</header>
+
+<h2><span class="n">01</span>三个方向<span class="en">three directions</span></h2>
+
+<div class="row3">
+
+  <div class="dir pick">
+    <div class="thumb"><span class="badge">A · 推荐</span><img src="shot-a.png" alt="方向A 精密仪器"></div>
+    <div class="body">
+      <h3>仪器</h3>
+      <div class="zh">instrument</div>
+      <p class="desc">把界面当成一块阳极氧化铝的设备面板。用丝印标签、刻度、发丝线做结构，坐标读数做成一块反白窗。它不像软件，像随机器一起出厂的东西。</p>
+      <div class="sw"><i style="background:#EEEFEA"></i><i style="background:#14161A"></i><i style="background:#5A5F66"></i><i style="background:#D6D8D2"></i><i style="background:#B06A1E"></i></div>
+      <div class="specs">
+        画布 <b>#EEEFEA</b> · 墨 <b>#14161A</b><br>
+        信号 <b>#B06A1E</b> · 危险 <b>#9B2C2C</b><br>
+        圆角 <b>0–2px</b> · 描边 <b>1px</b>
+      </div>
+      <a class="open" href="dir-a-instrument.html">打开原型 ↗</a>
+    </div>
+  </div>
+
+  <div class="dir">
+    <div class="thumb"><span class="badge">B</span><img src="shot-b.png" alt="方向B 暗场"></div>
+    <div class="body">
+      <h3>暗场</h3>
+      <div class="zh">blackbox</div>
+      <p class="desc">近黑机箱里一块发亮的纸。文稿带行号，右侧挂一个真实控制台，把「GRBL 原生」这件事直接摆在台面上。辨识度最高，也最容易被误读成开发者工具。</p>
+      <div class="sw"><i style="background:#0A0B0D"></i><i style="background:#101215"></i><i style="background:#E8EAED"></i><i style="background:#24282E"></i><i style="background:#C6F24E"></i></div>
+      <div class="specs">
+        画布 <b>#0A0B0D</b> · 面板 <b>#101215</b><br>
+        信号 <b>#C6F24E</b> · 危险 <b>#E5484D</b><br>
+        圆角 <b>0–3px</b> · 描边 <b>1px</b>
+      </div>
+      <a class="open" href="dir-b-blackbox.html">打开原型 ↗</a>
+    </div>
+  </div>
+
+  <div class="dir">
+    <div class="thumb"><span class="badge">C</span><img src="shot-c.png" alt="方向C 纸墨"></div>
+    <div class="body">
+      <h3>纸墨</h3>
+      <div class="zh">paper &amp; ink</div>
+      <p class="desc">这台机器的产物是纸上的墨迹，所以视觉母题不借机床，借文具与印刷：暖白纸、墨块按钮、稿纸的朱砂边线、点线引导的印刷表格。零阴影、零卡片。</p>
+      <div class="sw"><i style="background:#FAF7F0"></i><i style="background:#1B1917"></i><i style="background:#5C564E"></i><i style="background:#DED7C9"></i><i style="background:#A63A2A"></i></div>
+      <div class="specs">
+        纸 <b>#FAF7F0</b> · 墨 <b>#1B1917</b><br>
+        朱砂 <b>#A63A2A</b> · 规则线 <b>#DED7C9</b><br>
+        圆角 <b>0–1px</b> · 描边 <b>1px</b>
+      </div>
+      <a class="open" href="dir-c-paper.html">打开原型 ↗</a>
+    </div>
+  </div>
+
+</div>
+
+<h2><span class="n">02</span>交叉评审<span class="en">scoring</span></h2>
+<p>评分不是喜好投票，是四个能被追问的问题：像不像一台贵的设备、会不会被记住、用三个月烦不烦、在 GDI+ 里做得出来吗。</p>
+
+<table>
+<tr><th style="width:190px">维度</th><th style="width:150px">A 仪器</th><th style="width:150px">B 暗场</th><th style="width:150px">C 纸墨</th><th>判据</th></tr>
+<tr>
+  <td><b>专业感</b><br><span class="dim">像不像一台贵设备</span></td>
+  <td class="win"><span class="score">9</span><span class="bar"><i style="width:90%"></i></span></td>
+  <td><span class="score">8</span><span class="bar"><i style="width:80%"></i></span></td>
+  <td><span class="score">7</span><span class="bar"><i style="width:70%"></i></span></td>
+  <td class="dim">A 的反白读数窗 + 丝印标签最接近真机面板；C 高级但更像文具品牌官网</td>
+</tr>
+<tr>
+  <td><b>辨识度</b><br><span class="dim">会不会被记住</span></td>
+  <td><span class="score">6</span><span class="bar"><i style="width:60%"></i></span></td>
+  <td><span class="score">8</span><span class="bar"><i style="width:80%"></i></span></td>
+  <td class="win"><span class="score">9</span><span class="bar"><i style="width:90%"></i></span></td>
+  <td class="dim">C 的稿纸边线与墨块按钮别人抄不走；A 稳妥但同质化风险高</td>
+</tr>
+<tr>
+  <td><b>耐看度</b><br><span class="dim">用三个月烦不烦</span></td>
+  <td class="win"><span class="score">9</span><span class="bar"><i style="width:90%"></i></span></td>
+  <td><span class="score">6</span><span class="bar"><i style="width:60%"></i></span></td>
+  <td class="win"><span class="score">9</span><span class="bar"><i style="width:90%"></i></span></td>
+  <td class="dim">暗底 + 荧光长期看会累，尤其在车间强光下；B 的荧光绿面积已超过 3%</td>
+</tr>
+<tr>
+  <td><b>与产品契合</b><br><span class="dim">写字机，不是数控铣床</span></td>
+  <td><span class="score">7</span><span class="bar"><i style="width:70%"></i></span></td>
+  <td><span class="score">6</span><span class="bar"><i style="width:60%"></i></span></td>
+  <td class="win"><span class="score">10</span><span class="bar"><i style="width:100%"></i></span></td>
+  <td class="dim">B 的行号与控制台把「写字」讲成了「写代码」，对目标用户是噪音</td>
+</tr>
+<tr>
+  <td><b>GDI+ 实现成本</b></td>
+  <td><span class="score">中</span></td>
+  <td><span class="score">高</span></td>
+  <td class="win"><span class="score">低</span></td>
+  <td class="dim">暗底细字在 GDI+ 上抗锯齿会发糊；C 全是 1px 线与实心块，最稳</td>
+</tr>
+<tr>
+  <td><b>主要风险</b></td>
+  <td class="dim">偏闷，缺一个提亮焦点</td>
+  <td class="dim">荧光过量会被读成「黑客主题」</td>
+  <td class="dim">不够硬朗，可能显得太软</td>
+  <td class="dim">三条风险都能在合成时对冲</td>
+</tr>
+</table>
+
+<h2><span class="n">03</span>结论<span class="en">verdict</span></h2>
+
+<div class="verdict">
+  <h3>以 A 为骨，注入 C 的材料感，取 B 的纸面反差——去掉 B 的荧光</h3>
+  <p>
+    你要的「GRBL 那种好看」，本质不是暗色也不是终端感，而是<strong>克制</strong>：颜色少到能数清、圆角小到看不见、结构全靠 1px 线与留白撑、数字必须等宽。A 用最少的修辞把这件事说清楚了，而且它的反白读数窗是三条里唯一「像真机器」的东西。
+  </p>
+  <p>
+    但 A 有两个问题：一是画布偏亮偏平，纸张跳不出来；二是通篇没有一个视觉落点，看久了发闷。C 的稿纸朱砂边线和墨块按钮刚好补这两口气——它们不增加颜色数量，只是把朱砂用在该用的地方。B 唯一值得拿的是<strong>纸面对暗场的强反差</strong>，把它翻译成亮色语境，就是「画布压深一档，纸留白」。
+  </p>
+  <p>
+    所以终稿不是三选一，是 <code>A + C 的边线 + B 的反差 − B 的荧光</code>。下面三处是我这一刀落下的地方。
+  </p>
+</div>
+
+<div class="three">
+  <div class="fix">
+    <div class="n">FIX 01</div>
+    <b>画布压深，纸浮起来</b>
+    <p>中栏底从 <code>#EEEFEA</code> 压到 <code>#E1E2DA</code>，纸保持 <code>#FFFDF7</code>。差值拉大后纸张自己会跳出来，不需要加任何阴影。</p>
+  </div>
+  <div class="fix">
+    <div class="n">FIX 02</div>
+    <b>朱砂只出现在纸上</b>
+    <p>把 C 的稿纸边线搬过来，但只画在纸内、透明度 22%，不进任何 UI 控件。整屏唯一的暖色被锁在「作品」里，界面反而更冷更硬。</p>
+  </div>
+  <div class="fix">
+    <div class="n">FIX 03</div>
+    <b>红只归急停，按钮留墨</b>
+    <p>我先把「开始书写」改成朱砂实心，一屏两个红按钮立刻互相抵消，急停不再突出，又改回墨块。屏幕上唯一亮的是纸，唯一黑的是墨，唯一红的是纸上那道边线和急停。</p>
+  </div>
+</div>
+
+<h2><span class="n">04</span>评审依据<span class="en">criteria</span></h2>
+<ul>
+  <li><b>颜色数量是高级感的第一道门槛。</b>三案都控制在 4 色以内。凡是靠第五个颜色解决问题的方案，都会往廉价方向走一步。</li>
+  <li><b>圆角是「软件感」的来源。</b>12px 圆角 + 柔和阴影 = 手机 App；0–2px 直角 + 1px 线 = 仪器。你要摆脱 WinForms 味，第一个该砍的是圆角，不是配色。</li>
+  <li><b>数字必须等宽且对齐。</b>坐标每 50ms 变一次，非等宽字体会让整行左右跳动，这是最难忍的廉价感来源，也是最容易修的。</li>
+  <li><b>层级靠明度与字重，不靠字号乱跳。</b>A 全屏只用了 3 档字号，层级却很清楚——因为它用 400/500/600 三档字重和 4 级明度把话说完了。</li>
+</ul>
+
+<footer>
+  <span>INKPEN · VISUAL REVIEW</span>
+  <span>·</span>
+  <span>3 DIRECTIONS · 1 SYNTHESIS</span>
+  <span>·</span>
+  <span>RENDERED AT 1280×800</span>
+</footer>
+
+</div>
+</body>
+</html>

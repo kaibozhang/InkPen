@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>InkPen · Model A — Instrument</title>
+<style>
+/* ==========================================================
+   InkPen / DIRECTION A — INSTRUMENT
+   阳极氧化铝面板 · 精密机床语言
+   token 唯一入口：:root
+   ========================================================== */
+:root{
+  /* ---- 材质（4 色家族：板 / 墨 / 信号 / 危险） ---- */
+  --plate:#E8E9E3;        /* 阳极氧化铝板面 */
+  --well:#F5F5F2;         /* 铣削凹槽（输入/按键面） */
+  --paper:#FFFFFF;        /* 纸：唯一最亮面 */
+  --ink:#14161A;          /* 近黑墨 */
+  --ink-2:#5A5F66;        /* 次级文字 */
+  --ink-3:#8C9298;        /* 三级/丝印文字 */
+  --rule:#D6D8D2;         /* 1px 发丝线 */
+  --rule-2:#C2C5BE;       /* 1px 发丝线（强调/边框） */
+  --sig:#9A5716;          /* 琥珀信号：状态、轴号、当前值（对板面 4.6:1） */
+  --sig-l:#C98A3C;        /* 琥珀亮调（深底上） */
+  --sig-d:#8A4E15;
+  --danger:#9B2C2C;       /* 危险 */
+  --seal:#A63A2A;         /* 朱砂：只允许出现在纸面上 */
+  --bed:#DCDDD4;          /* 铣削床面：纸张嵌入的凹槽底 */
+
+  /* ---- 形状 ---- */
+  --r:2px;
+
+  /* ---- 字体 ---- */
+  --f:-apple-system,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+  --fm:"Cascadia Mono",Consolas,"SF Mono",monospace;
+  --fk:"KaiTi","楷体","STKaiti","SimSun",serif;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  min-height:100vh;display:grid;place-items:center;
+  background:#1A1C1E;
+  font-family:var(--f);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:geometricPrecision;
+}
+button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer}
+svg.i{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;
+  stroke-linecap:round;stroke-linejoin:round;flex:none}
+.spr{position:absolute;width:0;height:0;overflow:hidden}
+:focus-visible{outline:1px solid var(--ink);outline-offset:1px}
+
+/* ==========================================================
+   Shell
+   ========================================================== */
+.win{
+  position:relative;width:1280px;height:800px;overflow:hidden;
+  background:var(--plate);color:var(--ink);
+  display:flex;flex-direction:column;
+  box-shadow:0 26px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07);
+}
+/* 板面微颗粒：让平面不是纯色块 */
+.win::before{
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.win>*{position:relative;z-index:1}
+
+/* ==========================================================
+   Top plate
+   ========================================================== */
+.top{height:44px;display:flex;align-items:center;gap:13px;padding:0 14px;
+  border-bottom:1px solid var(--rule);flex:none}
+.brand{display:flex;align-items:center;gap:8px}
+.mark{width:22px;height:22px;background:var(--ink);color:#F2F3EF;
+  display:grid;place-items:center;border-radius:1px;flex:none}
+.mark svg{width:13px;height:13px;stroke-width:1.4}
+.bname{font-size:13px;font-weight:600;letter-spacing:.02em}
+.bsub{font-size:11px;color:var(--ink-3);letter-spacing:.02em;margin-left:1px}
+.vr{width:1px;height:17px;background:var(--rule-2);flex:none}
+
+.stat{height:22px;display:flex;align-items:center;gap:6px;padding:0 7px;
+  border:1px solid var(--rule-2);border-radius:var(--r)}
+.sd{width:5px;height:5px;background:var(--sig);flex:none}
+.sz{font-size:11.5px;font-weight:500;letter-spacing:.02em}
+.se{font-family:var(--fm);font-size:9px;letter-spacing:.1em;color:var(--ink-3)}
+
+.mi{display:flex;flex-direction:column;gap:2px}
+.mi .k{font-family:var(--fm);font-size:8px;letter-spacing:.15em;color:var(--ink-3);line-height:1}
+.mi .v{font-family:var(--fm);font-size:11px;color:var(--ink-2);letter-spacing:.02em;line-height:1}
+.grow{flex:1}
+.build{font-family:var(--fm);font-size:9.5px;letter-spacing:.1em;color:var(--ink-3)}
+.btn-dis{height:24px;display:flex;align-items:center;gap:5px;padding:0 9px;
+  border:1px solid var(--rule-2);border-radius:var(--r);background:var(--well);
+  font-size:11px;color:var(--ink-2)}
+.btn-dis:hover{border-color:var(--ink-3);color:var(--ink)}
+.btn-dis:active{background:#E6E7E1}
+
+/* ==========================================================
+   Columns
+   ========================================================== */
+.body{flex:1;display:flex;min-height:0}
+.col-l{width:290px;flex:none;border-right:1px solid var(--rule);
+  box-shadow:1px 0 0 rgba(255,255,255,.6);
+  display:flex;flex-direction:column;min-height:0}
+.col-c{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.col-r{width:340px;flex:none;border-left:1px solid var(--rule);
+  box-shadow:inset 1px 0 0 rgba(255,255,255,.6);
+  display:flex;flex-direction:column;min-height:0}
+
+/* section header = 丝印标题 */
+.sh{display:flex;align-items:baseline;gap:7px;padding-bottom:7px;
+  border-bottom:1px solid var(--rule);margin-bottom:9px}
+.sh .n{font-family:var(--fm);font-size:9px;letter-spacing:.08em;color:var(--sig)}
+.sh .z{font-size:11.5px;font-weight:600;letter-spacing:.03em}
+.sh .e{margin-left:auto;font-family:var(--fm);font-size:8.5px;letter-spacing:.16em;
+  color:var(--ink-3);text-transform:uppercase}
+
+/* ==========================================================
+   LEFT · 文稿 / 参数
+   ========================================================== */
+.lp{flex:1;min-height:0;display:flex;flex-direction:column;padding:13px 14px 0}
+.taw{flex:1;min-height:132px;display:flex;flex-direction:column;
+  border:1px solid var(--rule-2);border-radius:var(--r);background:var(--well);
+  overflow:hidden;box-shadow:inset 0 1px 0 rgba(20,22,26,.05)}
+.ta{flex:1;border:0;outline:none;resize:none;background:transparent;
+  padding:8px 10px;font-family:var(--f);font-size:12.5px;line-height:1.9;
+  color:var(--ink);letter-spacing:.01em}
+.taf{display:flex;justify-content:space-between;padding:3px 9px 4px;
+  border-top:1px solid var(--rule);font-family:var(--fm);font-size:9px;
+  letter-spacing:.06em;color:var(--ink-3)}
+
+.fr{display:flex;gap:6px;margin-top:8px}
+.btn-s{height:26px;display:flex;align-items:center;gap:5px;padding:0 9px;
+  border:1px solid var(--rule-2);border-radius:var(--r);background:transparent;
+  font-size:11px;color:var(--ink-2);letter-spacing:.02em}
+.btn-s svg{width:13px;height:13px}
+.btn-s:hover{background:var(--well);border-color:var(--ink-3);color:var(--ink)}
+.btn-s:active{background:#E6E7E1}
+.btn-s.ico{width:26px;padding:0;justify-content:center;margin-left:auto}
+
+.rows{display:flex;flex-direction:column;margin-bottom:2px}
+.row{display:flex;align-items:center;justify-content:space-between;height:31px;
+  border-bottom:1px solid var(--rule)}
+.rows .row:last-child{border-bottom:0}
+.rl{font-size:11.5px;color:var(--ink-2);letter-spacing:.01em}
+.fld{width:128px;height:23px;display:flex;align-items:center;gap:4px;
+  padding:0 5px 0 7px;border:1px solid var(--rule-2);border-radius:var(--r);
+  background:var(--well);font-size:11.5px;color:var(--ink);text-align:left;
+  box-shadow:inset 0 1px 0 rgba(20,22,26,.05)}
+.fld .v{font-size:11.5px;letter-spacing:.01em}
+.fld.n{padding-right:0}
+.fld.n .v{font-family:var(--fm);font-variant-numeric:tabular-nums}
+.fld .u{margin-left:auto;font-family:var(--fm);font-size:9px;color:var(--ink-3);letter-spacing:.05em}
+.fld .cv{margin-left:auto;color:var(--ink-3)}
+.fld .cv svg{width:11px;height:11px}
+.fld:hover{border-color:var(--ink-3)}
+.stp{display:flex;flex-direction:column;margin-left:auto;border-left:1px solid var(--rule);
+  align-self:stretch}
+.stp i{flex:1;display:grid;place-items:center;width:16px;color:var(--ink-2)}
+.stp i:first-child{border-bottom:1px solid var(--rule)}
+.stp i:hover{background:#E9EAE4;color:var(--ink)}
+.stp svg{width:9px;height:9px;stroke-width:1.7}
+
+.lact{padding:10px 14px 12px;flex:none;border-top:1px solid var(--rule)}
+.actline{display:flex;gap:6px}
+.btn-p{flex:1;height:36px;display:flex;align-items:center;justify-content:center;gap:6px;
+  background:var(--ink);color:#F2F3EF;border:1px solid var(--ink);border-radius:var(--r);
+  font-size:12px;font-weight:500;letter-spacing:.04em}
+.btn-p svg{width:13px;height:13px;stroke-width:1.6}
+.btn-p:hover{background:#24282D;border-color:#24282D}
+.btn-p:active{background:#0B0D10;border-color:#0B0D10}
+.btn-p2{width:72px;height:36px;border:1px solid var(--rule-2);border-radius:var(--r);
+  background:var(--well);font-size:12px;color:var(--ink-2);letter-spacing:.02em}
+.btn-p2:hover{border-color:var(--ink-3);color:var(--ink)}
+.btn-p2:active{background:#E6E7E1}
+.actmeta{display:flex;justify-content:space-between;margin-top:6px;
+  font-family:var(--fm);font-size:9px;letter-spacing:.06em;color:var(--ink-3)}
+
+/* ==========================================================
+   CENTER · 视图工具条
+   ========================================================== */
+.vt{height:42px;flex:none;display:flex;align-items:center;gap:7px;padding:0 14px;
+  border-bottom:1px solid var(--rule);overflow:hidden}
+.vt>*{flex:none}
+.seg{display:flex;border:1px solid var(--rule-2);border-radius:var(--r);overflow:hidden}
+.seg button{height:24px;display:flex;align-items:center;gap:5px;padding:0 7px;
+  background:var(--well);font-size:11px;color:var(--ink-2);white-space:nowrap;
+  border-right:1px solid var(--rule-2)}
+.seg button:last-child{border-right:0}
+.seg button svg{width:12px;height:12px}
+.seg button:hover{background:#EDEEE8;color:var(--ink)}
+.seg button.on{background:var(--ink);color:#F2F3EF;font-weight:500;border-right-color:var(--ink)}
+.mini{width:24px;height:24px;display:grid;place-items:center;
+  border:1px solid var(--rule-2);border-radius:var(--r);background:var(--well);
+  color:var(--ink-2)}
+.mini:hover{border-color:var(--ink-3);color:var(--ink);background:#EDEEE8}
+.mini:active{background:#E3E5DE}
+.mini svg{width:12px;height:12px}
+.zm{font-family:var(--fm);font-size:11px;min-width:32px;text-align:center;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.pg{font-family:var(--fm);font-size:11px;min-width:40px;text-align:center;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.pg i{font-style:normal;color:var(--ink-3);margin:0 2px}
+.tm{font-family:var(--fm);font-size:9.5px;letter-spacing:.08em;color:var(--ink-3);
+  white-space:nowrap}
+
+/* ==========================================================
+   CENTER · 纸张预览台
+   ========================================================== */
+.stage{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 16px 2px}
+.tickx{height:9px;border-bottom:1px solid var(--rule);
+  background-image:
+    repeating-linear-gradient(to right,var(--rule-2) 0 1px,transparent 1px 8px),
+    repeating-linear-gradient(to right,var(--ink-2) 0 1px,transparent 1px 40px);
+  background-size:100% 3px,100% 7px;
+  background-position:left bottom,left bottom;
+  background-repeat:repeat-x,repeat-x}
+.bedwrap{flex:1;min-height:0;display:flex;padding-top:5px}
+.bed{flex:1;min-width:0;display:grid;place-items:center;position:relative;padding:0;
+  background:var(--bed);
+  box-shadow:inset 0 2px 5px rgba(20,22,26,.11), inset 0 -1px 0 rgba(255,255,255,.55)}
+
+/* ---- 预览台整数度量（可验算，实现方直接照抄）
+   基准 100%：1mm = 3px   缩放 65%：1mm = 1.95px
+   A4 210×297mm → 410×579px（误差 0.03%）
+   字号 10.0mm → 19.5px   行长 (10+6)mm = 16mm → 31px   行距 6.0mm → 11.7px ---- */
+.pw{position:relative;width:410px;height:579px;background:var(--paper);
+  border:1px solid var(--rule);box-shadow:0 1px 0 rgba(20,22,26,.07)}
+.pin{position:absolute;inset:0;padding:26px 18px 0 46px;overflow:hidden}
+.pw::before{content:"";position:absolute;left:30px;top:0;bottom:0;width:1px;
+  background:rgba(166,58,42,.26);z-index:2}
+.ln{height:31px;display:flex;align-items:flex-end;padding-bottom:6px;
+  border-bottom:1px solid #E4E6DF;
+  font-family:var(--fk);font-size:19.5px;line-height:1;color:#24272B;letter-spacing:.02em;
+  white-space:nowrap}
+.cm{position:absolute;width:12px;height:12px;pointer-events:none;color:#B0B4AC;
+  background:
+    linear-gradient(currentColor,currentColor) center/12px 1px no-repeat,
+    linear-gradient(currentColor,currentColor) center/1px 12px no-repeat}
+.cm.tl{left:-18px;top:-18px}
+.cm.tr{right:-18px;top:-18px}
+.cm.bl{left:-18px;bottom:-18px}
+.cm.br{right:-18px;bottom:-18px}
+
+/* CENTER · 底部运行状态 */
+.run{height:38px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;
+  border-top:1px solid var(--rule)}
+.rd{width:5px;height:5px;background:var(--sig);flex:none}
+.rt{font-size:11px;color:var(--ink-2);letter-spacing:.02em}
+.track{position:relative;width:110px;height:3px;background:#DCDED7;flex:none}
+.track i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--ink)}
+.tk{font-family:var(--fm);font-size:9.5px;letter-spacing:.06em;color:var(--ink-3)}
+
+/* ==========================================================
+   RIGHT · DRO / JOG / 状态 / 动作
+   ========================================================== */
+.rp{flex:1;min-height:0;display:flex;flex-direction:column;padding:13px 14px 0}
+.dro{background:var(--ink);border:1px solid #0C0E11;border-radius:var(--r);padding:3px 0}
+.dr{display:flex;align-items:baseline;padding:7px 11px;
+  border-bottom:1px solid rgba(244,244,241,.13)}
+.dr:last-child{border-bottom:0}
+.dr .ax{font-family:var(--fm);font-size:9.5px;letter-spacing:.16em;color:var(--sig-l);width:11px}
+.dr .vl{margin-left:auto;font-family:var(--fm);font-size:20px;line-height:1;
+  font-variant-numeric:tabular-nums;color:#EEEFEA;letter-spacing:.005em}
+.dr .un{width:24px;text-align:right;font-family:var(--fm);font-size:9.5px;
+  color:rgba(238,239,234,.60);letter-spacing:.06em}
+.drmeta{display:flex;justify-content:space-between;margin-top:5px;
+  font-family:var(--fm);font-size:9px;letter-spacing:.1em;color:var(--ink-3);
+  text-transform:uppercase}
+
+.jog{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+  background:var(--rule-2);border:1px solid var(--rule-2);border-radius:var(--r);
+  overflow:hidden;margin-top:2px}
+.jb{height:43px;display:flex;align-items:center;justify-content:center;gap:5px;
+  background:var(--well);color:var(--ink-2);font-size:10.5px}
+.jb svg{width:14px;height:14px;color:var(--ink)}
+.jb:hover{background:#EAEBE5}
+.jb:active{background:var(--ink);color:#F2F3EF}
+.jb:active svg{color:#F2F3EF}
+.jb .t{font-family:var(--fm);font-size:11px;letter-spacing:.02em}
+.jctr{background:#E9EAE4;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:2px}
+.jctr .sv{font-family:var(--fm);font-size:11.5px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.jctr .sl{font-family:var(--fm);font-size:7.5px;letter-spacing:.16em;color:var(--ink-3)}
+
+.shead{display:flex;align-items:baseline;justify-content:space-between;
+  margin:11px 0 5px}
+.shead .l{font-size:10.5px;color:var(--ink-2);letter-spacing:.02em}
+.shead .r{font-family:var(--fm);font-size:8.5px;letter-spacing:.14em;color:var(--ink-3)}
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;
+  background:var(--rule-2);border:1px solid var(--rule-2);border-radius:var(--r);overflow:hidden}
+.steps button{height:26px;background:var(--well);font-family:var(--fm);font-size:10.5px;
+  color:var(--ink-2);font-variant-numeric:tabular-nums}
+.steps button:hover{background:#EAEBE5;color:var(--ink)}
+.steps button.on{background:var(--ink);color:#F2F3EF}
+
+.kv{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--rule)}
+.kv div{padding:6px 0 7px;border-bottom:1px solid var(--rule)}
+.kv div:nth-child(odd){padding-right:10px;border-right:1px solid var(--rule)}
+.kv div:nth-child(even){padding-left:10px}
+.kv .k{display:block;font-size:9.5px;color:var(--ink-3);letter-spacing:.04em;margin-bottom:2px}
+.kv .v{font-family:var(--fm);font-size:10.5px;color:var(--ink);letter-spacing:.02em;white-space:nowrap}
+
+.ract{padding:11px 14px 12px;display:flex;flex-direction:column;gap:7px;flex:none;
+  border-top:1px solid var(--rule)}
+.btn-run{height:38px;display:flex;align-items:center;gap:7px;padding:0 12px;
+  background:var(--ink);border:1px solid var(--ink);border-radius:var(--r);
+  color:#F2F3EF;font-size:12px;font-weight:500;letter-spacing:.04em}
+.btn-run svg{width:13px;height:13px;stroke-width:1.6}
+.btn-run .m{margin-left:auto;font-family:var(--fm);font-size:9px;letter-spacing:.1em;
+  color:rgba(242,243,239,.5)}
+.btn-run:hover{background:#24282D;border-color:#24282D}
+.btn-run:active{background:#0B0D10}
+.act3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.btn-o{height:30px;display:flex;align-items:center;justify-content:center;gap:5px;
+  border:1px solid var(--rule-2);border-radius:var(--r);background:var(--well);
+  font-size:11px;color:var(--ink-2);letter-spacing:.02em}
+.btn-o svg{width:12px;height:12px}
+.btn-o:hover{border-color:var(--ink-3);color:var(--ink)}
+.btn-o:active{background:#E3E5DE}
+.btn-o[disabled]{opacity:.38;cursor:not-allowed;background:transparent}
+.btn-o[disabled]:hover{border-color:var(--rule-2);color:var(--ink-2)}
+.btn-estop{height:38px;display:flex;align-items:center;gap:7px;padding:0 12px;
+  background:var(--danger);border:1px solid #7E2222;border-radius:var(--r);
+  color:#FCF4F4;font-size:12px;font-weight:600;letter-spacing:.08em}
+.btn-estop svg{width:13px;height:13px;stroke-width:1.6}
+.btn-estop .m{margin-left:auto;font-family:var(--fm);font-size:10px;letter-spacing:.14em;
+  color:rgba(252,244,244,.88)}
+.btn-estop:hover{background:#8A2626}
+.btn-estop:active{background:#7A2020}
+
+/* ==========================================================
+   Bottom 丝印条
+   ========================================================== */
+.foot{height:24px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px;
+  border-top:1px solid var(--rule);font-family:var(--fm);font-size:8.5px;
+  letter-spacing:.14em;color:var(--ink-3);text-transform:uppercase}
+.foot .sp{width:1px;height:10px;background:var(--rule-2)}
+</style>
+</head>
+<body>
+
+<svg class="spr" aria-hidden="true">
+  <symbol id="i-nib" viewBox="0 0 16 16"><path d="M8 1.6 12.4 6.4 8 14.4 3.6 6.4Z"/><circle cx="8" cy="6.9" r="1.15"/></symbol>
+  <symbol id="i-power" viewBox="0 0 16 16"><path d="M8 2.4v5"/><path d="M11.7 4.3a4.9 4.9 0 1 1-7.4 0"/></symbol>
+  <symbol id="i-chevd" viewBox="0 0 16 16"><path d="M4.4 6.4 8 10 11.6 6.4"/></symbol>
+  <symbol id="i-cup" viewBox="0 0 16 16"><path d="M4.2 9.8 8 6l3.8 3.8"/></symbol>
+  <symbol id="i-cdn" viewBox="0 0 16 16"><path d="M4.2 6.2 8 10l3.8-3.8"/></symbol>
+  <symbol id="i-aup" viewBox="0 0 16 16"><path d="M8 12.2V3.8"/><path d="M4.4 7.4 8 3.8l3.6 3.6"/></symbol>
+  <symbol id="i-adn" viewBox="0 0 16 16"><path d="M8 3.8v8.4"/><path d="M4.4 8.6 8 12.2l3.6-3.6"/></symbol>
+  <symbol id="i-alf" viewBox="0 0 16 16"><path d="M3.8 8h8.4"/><path d="M7.4 4.4 3.8 8l3.6 3.6"/></symbol>
+  <symbol id="i-art" viewBox="0 0 16 16"><path d="M12.2 8H3.8"/><path d="M8.6 4.4 12.2 8 8.6 11.6"/></symbol>
+  <symbol id="i-home" viewBox="0 0 16 16"><path d="M2.8 7.2 8 3l5.2 4.2"/><path d="M4.4 6.6v6.6h7.2V6.6"/></symbol>
+  <symbol id="i-zero" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.6"/><path d="M8 1.6v2.4M8 12v2.4M1.6 8h2.4M12 8h2.4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.9 3.4 11.6 8l-6.7 4.6Z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><path d="M5.7 3.4v9.2M10.3 3.4v9.2"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4.3" y="4.3" width="7.4" height="7.4"/></symbol>
+  <symbol id="i-estop" viewBox="0 0 16 16"><path d="M5.7 2h4.6l3.7 3.7v4.6L10.3 14H5.7L2 10.3V5.7Z"/><path d="M8 5.4v3.3"/><circle cx="8" cy="10.9" r=".55" fill="currentColor"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.6 8S4 4.2 8 4.2 14.4 8 14.4 8 12 11.8 8 11.8 1.6 8 1.6 8Z"/><circle cx="8" cy="8" r="1.8"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 16 16"><rect x="2.6" y="2.6" width="10.8" height="10.8"/><path d="M2.6 8h10.8M8 2.6v10.8"/></symbol>
+  <symbol id="i-path" viewBox="0 0 16 16"><path d="M2.8 12.6 6.4 5.4l3.4 3.2 3.4-5.2"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 16 16"><path d="M3.6 8h8.8"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.6v8.8M3.6 8h8.8"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 16 16"><path d="M2.6 6V2.6H6M10 2.6h3.4V6M13.4 10v3.4H10M6 13.4H2.6V10"/></symbol>
+  <symbol id="i-chevl" viewBox="0 0 16 16"><path d="M10.2 3.6 5.4 8l4.8 4.4"/></symbol>
+  <symbol id="i-chevr" viewBox="0 0 16 16"><path d="M5.8 3.6 10.6 8l-4.8 4.4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.8 4.6h10.4"/><path d="M5.6 4.6V2.9h4.8v1.7"/><path d="M4.4 4.6l.7 8.5h5.8l.7-8.5"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.4h4.2l1.4 1.7H14v6.3H2Z"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 16 16"><rect x="4.4" y="2.9" width="7.2" height="10.7"/><rect x="6.2" y="1.6" width="3.6" height="2.1"/></symbol>
+</svg>
+
+<div class="win">
+
+  <!-- ===================== TOP ===================== -->
+  <header class="top">
+    <div class="brand">
+      <span class="mark"><svg class="i"><use href="#i-nib"/></svg></span>
+      <span class="bname">InkPen</span>
+      <span class="bsub">写字机工作台</span>
+    </div>
+    <i class="vr"></i>
+    <div class="stat"><i class="sd"></i><span class="sz">待机</span><span class="se">IDLE</span></div>
+    <i class="vr"></i>
+    <div class="mi"><span class="k">CONTROLLER</span><span class="v">GRBL 1.3a · ESP32</span></div>
+    <i class="vr"></i>
+    <div class="mi"><span class="k">LINK</span><span class="v">COM3 · 115200 8N1</span></div>
+    <div class="grow"></div>
+    <span class="build">BUILD 2.4.1</span>
+    <button class="btn-dis" title="断开串口连接"><svg class="i"><use href="#i-power"/></svg>断开</button>
+  </header>
+
+  <div class="body">
+
+    <!-- ===================== LEFT ===================== -->
+    <aside class="col-l">
+      <div class="lp">
+
+        <div class="sh"><span class="n">01</span><span class="z">文稿输入</span><span class="e">Manuscript</span></div>
+
+        <div class="taw">
+          <textarea class="ta" spellcheck="false" aria-label="文稿输入">写字机工作台
+基于开源 GRBL·Plotter 二次开发
+免驱动 免安装 离线可用
+中文手写体一键生成 GCode
+Hello 123，谢谢你</textarea>
+          <div class="taf"><span>84 字 · 5 行</span><span>A4 容 18 行</span></div>
+        </div>
+
+        <div class="fr">
+          <button class="btn-s"><svg class="i"><use href="#i-folder"/></svg>打开 txt</button>
+          <button class="btn-s"><svg class="i"><use href="#i-clip"/></svg>粘贴</button>
+          <button class="btn-s ico" title="清空文稿"><svg class="i"><use href="#i-trash"/></svg></button>
+        </div>
+
+        <div class="sh" style="margin-top:14px"><span class="n">02</span><span class="z">排版参数</span><span class="e">Typeset</span></div>
+
+        <div class="rows">
+          <div class="row">
+            <span class="rl">稿纸模板</span>
+            <button class="fld"><span class="v">横线稿纸</span><span class="cv"><svg class="i"><use href="#i-chevd"/></svg></span></button>
+          </div>
+          <div class="row">
+            <span class="rl">字号</span>
+            <div class="fld n"><span class="v">10.0</span><span class="u">mm</span>
+              <span class="stp"><i><svg class="i"><use href="#i-cup"/></svg></i><i><svg class="i"><use href="#i-cdn"/></svg></i></span>
+            </div>
+          </div>
+          <div class="row">
+            <span class="rl">字距</span>
+            <div class="fld n"><span class="v">1.0</span><span class="u">mm</span>
+              <span class="stp"><i><svg class="i"><use href="#i-cup"/></svg></i><i><svg class="i"><use href="#i-cdn"/></svg></i></span>
+            </div>
+          </div>
+          <div class="row">
+            <span class="rl">行距</span>
+            <div class="fld n"><span class="v">6.0</span><span class="u">mm</span>
+              <span class="stp"><i><svg class="i"><use href="#i-cup"/></svg></i><i><svg class="i"><use href="#i-cdn"/></svg></i></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sh" style="margin-top:14px"><span class="n">03</span><span class="z">笔与运动</span><span class="e">Pen / Motion</span></div>
+
+        <div class="rows">
+          <div class="row">
+            <span class="rl">抬笔高度</span>
+            <div class="fld n"><span class="v">2.0</span><span class="u">mm</span>
+              <span class="stp"><i><svg class="i"><use href="#i-cup"/></svg></i><i><svg class="i"><use href="#i-cdn"/></svg></i></span>
+            </div>
+          </div>
+          <div class="row">
+            <span class="rl">书写进给</span>
+            <div class="fld n"><span class="v">1200</span><span class="u">mm/min</span>
+              <span class="stp"><i><svg class="i"><use href="#i-cup"/></svg></i><i><svg class="i"><use href="#i-cdn"/></svg></i></span>
+            </div>
+          </div>
+          <div class="row">
+            <span class="rl">字库</span>
+            <button class="fld"><span class="v">手写体·单线</span><span class="cv"><svg class="i"><use href="#i-chevd"/></svg></span></button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="lact">
+        <div class="actline">
+          <button class="btn-p"><svg class="i"><use href="#i-path"/></svg>生成 GCode</button>
+          <button class="btn-p2">预览</button>
+        </div>
+        <div class="actmeta"><span>第 130 条 · 2,902 行</span><span>预估 8 分 40 秒</span></div>
+      </div>
+    </aside>
+
+    <!-- ===================== CENTER ===================== -->
+    <section class="col-c">
+
+      <div class="vt">
+        <div class="seg">
+          <button class="on"><svg class="i"><use href="#i-eye"/></svg>预览</button>
+          <button><svg class="i"><use href="#i-grid"/></svg>格线</button>
+          <button><svg class="i"><use href="#i-path"/></svg>路径</button>
+        </div>
+        <i class="vr"></i>
+        <button class="mini" title="缩小"><svg class="i"><use href="#i-minus"/></svg></button>
+        <span class="zm">65%</span>
+        <button class="mini" title="放大"><svg class="i"><use href="#i-plus"/></svg></button>
+        <button class="mini" title="适应窗口"><svg class="i"><use href="#i-fit"/></svg></button>
+        <i class="vr"></i>
+        <button class="mini" title="上一页"><svg class="i"><use href="#i-chevl"/></svg></button>
+        <span class="pg">1<i>/</i>3</span>
+        <button class="mini" title="下一页"><svg class="i"><use href="#i-chevr"/></svg></button>
+        <div class="grow"></div>
+        <span class="tm">A4 · 210 × 297 MM</span>
+      </div>
+
+      <div class="stage">
+        <div class="tickx"></div>
+        <div class="bedwrap">
+          <div class="bed">
+            <div class="pw">
+              <span class="cm tl"></span><span class="cm tr"></span>
+              <span class="cm bl"></span><span class="cm br"></span>
+              <div class="pin">
+                <div class="ln">写字机工作台</div>
+                <div class="ln">基于开源 GRBL·Plotter 二次开发</div>
+                <div class="ln">免驱动 免安装 离线可用</div>
+                <div class="ln">中文手写体一键生成 GCode</div>
+                <div class="ln">Hello 123，谢谢你</div>
+                <div class="ln"></div><div class="ln"></div><div class="ln"></div>
+                <div class="ln"></div><div class="ln"></div><div class="ln"></div>
+                <div class="ln"></div><div class="ln"></div><div class="ln"></div>
+                <div class="ln"></div><div class="ln"></div><div class="ln"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="run">
+        <i class="rd"></i>
+        <span class="rt">就绪 · 等待生成</span>
+        <div class="track"><i></i></div>
+        <span class="tk">0 / 2,902 行</span>
+        <div class="grow"></div>
+        <span class="tk">静态检查通过 · 0 警告</span>
+      </div>
+    </section>
+
+    <!-- ===================== RIGHT ===================== -->
+    <aside class="col-r">
+      <div class="rp">
+
+        <div class="sh"><span class="n">04</span><span class="z">工作坐标</span><span class="e">Work DRO</span></div>
+
+        <div class="dro">
+          <div class="dr"><span class="ax">X</span><span class="vl">120.500</span><span class="un">MM</span></div>
+          <div class="dr"><span class="ax">Y</span><span class="vl">64.250</span><span class="un">MM</span></div>
+          <div class="dr"><span class="ax">Z</span><span class="vl">-2.000</span><span class="un">MM</span></div>
+        </div>
+        <div class="drmeta"><span>RES 0.001 MM</span><span>G54 工件坐标</span></div>
+
+        <div class="sh" style="margin-top:14px"><span class="n">05</span><span class="z">手动移动</span><span class="e">Jog</span></div>
+
+        <div class="jog">
+          <button class="jb" title="回原点"><svg class="i"><use href="#i-home"/></svg><span>原点</span></button>
+          <button class="jb" title="Y+"><svg class="i"><use href="#i-aup"/></svg></button>
+          <button class="jb" title="Z 轴上升"><span class="t">Z+</span></button>
+
+          <button class="jb" title="X−"><svg class="i"><use href="#i-alf"/></svg></button>
+          <div class="jctr"><span class="sv">0.100</span><span class="sl">STEP</span></div>
+          <button class="jb" title="X+"><svg class="i"><use href="#i-art"/></svg></button>
+
+          <button class="jb" title="Z 轴下降"><span class="t">Z−</span></button>
+          <button class="jb" title="Y−"><svg class="i"><use href="#i-adn"/></svg></button>
+          <button class="jb" title="坐标清零"><svg class="i"><use href="#i-zero"/></svg><span>清零</span></button>
+        </div>
+
+        <div class="shead"><span class="l">步长</span><span class="r">STEP · MM</span></div>
+        <div class="steps">
+          <button>0.1</button>
+          <button class="on">1</button>
+          <button>10</button>
+          <button>50</button>
+          <button>100</button>
+        </div>
+
+        <div class="sh" style="margin-top:14px"><span class="n">06</span><span class="z">机床状态</span><span class="e">Machine</span></div>
+
+        <div class="kv">
+          <div><span class="k">电机使能</span><span class="v">已使能 · 3 轴</span></div>
+          <div><span class="k">限位开关</span><span class="v">X · Y · Z 正常</span></div>
+          <div><span class="k">串口缓冲</span><span class="v">127 / 128</span></div>
+          <div><span class="k">最近错误</span><span class="v">0</span></div>
+        </div>
+
+      </div>
+
+      <div class="ract">
+        <button class="btn-run"><svg class="i"><use href="#i-play"/></svg>开始书写<span class="m">F 1200</span></button>
+        <div class="act3">
+          <button class="btn-o"><svg class="i"><use href="#i-pause"/></svg>暂停</button>
+          <button class="btn-o" disabled><svg class="i"><use href="#i-play"/></svg>继续</button>
+          <button class="btn-o"><svg class="i"><use href="#i-stop"/></svg>停止</button>
+        </div>
+        <button class="btn-estop"><svg class="i"><use href="#i-estop"/></svg>急停<span class="m">E-STOP</span></button>
+      </div>
+    </aside>
+
+  </div>
+
+  <footer class="foot">
+    <span>InkPen · Model A</span><i class="sp"></i>
+    <span>SN 2408-0117</span><i class="sp"></i>
+    <span>Single-line engine 1.0</span>
+    <div class="grow"></div>
+    <span>GRBL 1.3a · 3 axis</span><i class="sp"></i>
+    <span>x-y plotter / z lift</span>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>InkPen · 方向 C · 纸墨</title>
+<style>
+/* ============================================================
+   方向 C — PAPER & INK
+   材料诚实：纸的温度、墨的密度、朱砂的唯一一笔。
+    estrutura: 无卡片、无阴影（纸除外）、只靠发丝线与留白分区。
+   ============================================================ */
+:root{
+  --desk:#E2DDD1;
+  --paper:#FAF7F0;
+  --paper-2:#F3EFE5;
+  --sheet:#FFFDF7;
+  --ink:#1B1917;
+  --ink-2:#5C564E;
+  --ink-3:#6F6659;
+  --rule:#DED7C9;
+  --rule-2:#C7BEA9;
+  --seal:#A63A2A;
+  --seal-soft:#F1E0D9;
+
+  --serif:"Songti SC","STSong","Noto Serif SC","Source Han Serif SC",SimSun,serif;
+  --sans:-apple-system,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+  --mono:"Cascadia Mono",Consolas,"SF Mono","DejaVu Sans Mono",monospace;
+
+  --track:0.14em;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--desk);
+  font-family:var(--sans);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;padding:34px 0;
+}
+
+.app{
+  width:1280px;height:800px;position:relative;
+  background:var(--paper);
+  display:flex;flex-direction:column;
+  box-shadow:0 1px 0 rgba(255,255,255,.9) inset,
+             0 18px 50px rgba(48,40,26,.16),
+             0 2px 6px rgba(48,40,26,.10);
+  outline:1px solid rgba(80,68,48,.14);
+}
+
+/* ---------------- header ---------------- */
+.hdr{
+  height:56px;flex:none;display:flex;align-items:center;
+  padding:0 22px;border-bottom:1px solid var(--rule);
+}
+.logo{display:flex;align-items:center;gap:10px}
+.logo svg{width:22px;height:22px;stroke:var(--ink);fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.wordmark{
+  font-family:var(--serif);font-size:19px;font-weight:600;letter-spacing:.01em;line-height:1;
+}
+.wordmark small{
+  display:block;font-family:var(--sans);font-size:9px;font-weight:400;letter-spacing:var(--track);
+  color:var(--ink-3);margin-top:3px;text-transform:uppercase;
+}
+.hsep{width:1px;height:22px;background:var(--rule);margin:0 18px}
+.grow{flex:1}
+
+.state{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-2)}
+.state i{width:5px;height:5px;border-radius:50%;background:var(--ink);display:block}
+.state.alarm i{background:var(--seal)}
+.state.alarm b{color:var(--seal)}
+.state b{font-weight:600;color:var(--ink)}
+.state em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.04em}
+
+.meta{display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.02em}
+.meta span{display:flex;align-items:center;gap:5px}
+.meta svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+
+.tbtn{
+  height:26px;padding:0 11px;border:1px solid var(--rule-2);background:transparent;
+  font-family:var(--sans);font-size:11.5px;color:var(--ink-2);cursor:pointer;
+  border-radius:1px;letter-spacing:.02em;
+}
+.tbtn:hover{border-color:var(--ink);color:var(--ink)}
+
+/* ---------------- body ---------------- */
+.body{flex:1;min-height:0;display:grid;grid-template-columns:300px minmax(0,1fr) 344px}
+
+.col-l{padding:20px 22px 0;border-right:1px solid var(--rule);display:flex;flex-direction:column;min-height:0}
+.col-c{display:flex;flex-direction:column;min-height:0;background:var(--paper-2)}
+.col-r{padding:20px 22px 0;border-left:1px solid var(--rule);display:flex;flex-direction:column;min-height:0}
+
+/* 章节标题：编号 + 中文 + 拉丁丝印 */
+.sec{display:flex;align-items:baseline;gap:8px;margin:0 0 11px}
+.sec .n{font-family:var(--mono);font-size:9.5px;color:var(--seal);letter-spacing:.06em}
+.sec h2{font-size:12.5px;font-weight:600;margin:0;letter-spacing:.04em}
+.sec .en{font-family:var(--mono);font-size:9px;color:var(--ink-3);letter-spacing:var(--track);text-transform:uppercase}
+.sec .grow2{flex:1}
+.sec .cnt{font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+
+/* 文稿纸：像一张便笺，只留一条底线 */
+.manu{position:relative;margin-bottom:6px}
+.manu textarea{
+  width:100%;height:150px;display:block;resize:none;
+  border:0;border-bottom:1px solid var(--rule-2);
+  background:transparent;padding:0 2px 8px;
+  font-family:var(--serif);font-size:13.5px;line-height:1.85;color:var(--ink);
+  outline:0;
+}
+.manu::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:linear-gradient(90deg,var(--ink) 0 18px,transparent 18px);
+  opacity:.0;
+}
+.manu.focus textarea{border-bottom-color:var(--ink)}
+.manu-tools{display:flex;gap:14px;margin:9px 0 20px}
+.link{
+  font-size:11px;color:var(--ink-2);background:none;border:0;padding:0;cursor:pointer;
+  border-bottom:1px solid transparent;letter-spacing:.02em;
+}
+.link:hover{color:var(--ink);border-bottom-color:var(--ink-3)}
+
+/* 参数行：点线引导，像印刷表格 */
+.rows{margin-bottom:18px}
+.prow{
+  display:flex;align-items:baseline;gap:8px;height:33px;
+}
+
+.prow .k{font-size:11.5px;color:var(--ink-2);white-space:nowrap;letter-spacing:.02em}
+.prow .dot{flex:1;height:1px;border-bottom:1px dotted var(--rule-2);transform:translateY(-3px)}
+.prow .v{
+  font-family:var(--sans);font-size:11.5px;color:var(--ink);
+  white-space:nowrap;letter-spacing:0;
+}
+.prow .v.num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.prow .v .u{color:var(--ink-3);font-size:10px;margin-left:2px;font-family:var(--mono)}
+.prow .v.sel{color:var(--ink)}
+.prow{cursor:pointer;transition:background .12s}
+.prow:hover{background:rgba(27,25,23,.035)}
+.prow:hover .v{color:var(--seal)}
+
+/* 主操作：墨块 */
+.inkbtn{
+  width:100%;height:40px;border:0;border-radius:1px;cursor:pointer;
+  background:var(--ink);color:var(--paper);
+  font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:.12em;
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  transition:background .14s;
+}
+.inkbtn:hover{background:#000}
+.inkbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.ghostbtn{
+  height:34px;border:1px solid var(--rule-2);background:transparent;border-radius:1px;
+  font-size:11.5px;color:var(--ink-2);cursor:pointer;letter-spacing:.02em;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.ghostbtn:hover{border-color:var(--ink);color:var(--ink)}
+.ghostbtn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.foot-note{
+  margin-top:auto;padding:12px 0 16px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.06em;line-height:1.9;
+}
+
+/* ---------------- center ---------------- */
+.tbar{
+  height:44px;flex:none;display:flex;align-items:center;gap:2px;padding:0 16px;
+  border-bottom:1px solid var(--rule);background:var(--paper);
+}
+.tbar .grp{display:flex;align-items:center}
+.tbar button{
+  height:26px;padding:0 10px;border:0;background:none;border-radius:1px;cursor:pointer;
+  font-size:11.5px;color:var(--ink-3);letter-spacing:.02em;
+}
+.tbar button:hover{color:var(--ink);background:rgba(27,25,23,.04)}
+.tbar button.on{color:var(--ink);font-weight:600}
+.tbar button.on::after{
+  content:"";display:block;height:1px;background:var(--ink);margin-top:3px;
+}
+.tbar .dv{width:1px;height:14px;background:var(--rule);margin:0 8px}
+.tbar .zoom{font-family:var(--mono);font-size:11px;color:var(--ink-2);padding:0 4px;font-variant-numeric:tabular-nums}
+.tbar .pager{font-family:var(--mono);font-size:11px;color:var(--ink-2);padding:0 6px;font-variant-numeric:tabular-nums}
+.ibtn{width:26px;height:26px;display:grid;place-items:center;border:0;background:none;border-radius:1px;cursor:pointer;color:var(--ink-2)}
+.ibtn:hover{background:rgba(27,25,23,.05);color:var(--ink)}
+.ibtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+
+.canvas{
+  flex:1;min-height:0;position:relative;display:grid;place-items:center;
+  background:
+    linear-gradient(0deg,rgba(120,104,78,.045) 1px,transparent 1px) 0 0/100% 24px,
+    var(--paper-2);
+}
+.sheet{
+  width:346px;height:490px;background:var(--sheet);position:relative;
+  box-shadow:0 1px 2px rgba(60,50,34,.14), 0 12px 28px rgba(60,50,34,.13);
+  padding:30px 26px;
+}
+.sheet::before{
+  content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(to bottom,transparent 0 25.6px,#EFE7D6 25.6px 26.6px);
+  opacity:.85;pointer-events:none;
+}
+.sheet::after{
+  content:"";position:absolute;left:64px;top:0;bottom:0;width:1px;
+  background:rgba(166,58,42,.22);
+}
+.sheet .hand{
+  position:relative;font-family:"KaiTi","STKaiti",楷体,var(--serif);
+  font-size:15.5px;line-height:26.6px;color:#221F1B;letter-spacing:1.6px;
+}
+.sheet .hand span{display:block;white-space:nowrap}
+.sheet .idx{
+  position:absolute;right:0;bottom:-19px;font-family:var(--mono);font-size:9px;
+  color:var(--ink-3);letter-spacing:.08em;
+}
+.penpos{
+  position:absolute;left:196px;top:236px;width:0;height:0;pointer-events:none;
+}
+.penpos::before{
+  content:"";position:absolute;left:-4.5px;top:-4.5px;width:9px;height:9px;
+  border:1px solid var(--seal);border-radius:50%;
+}
+.penpos::after{
+  content:"";position:absolute;left:-13px;top:0;width:26px;height:1px;background:var(--seal);opacity:.55;
+}
+.penpos b{
+  position:absolute;left:11px;top:-16px;font-family:var(--mono);font-size:9px;color:var(--seal);
+  white-space:nowrap;letter-spacing:.04em;
+}
+.runstrip{
+  height:34px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;
+  border-top:1px solid var(--rule);background:var(--paper);
+  font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.04em;
+}
+.runstrip .bar{flex:1;height:1px;background:var(--rule-2);position:relative}
+.runstrip .bar i{position:absolute;left:0;top:-1px;height:3px;width:42%;background:var(--ink)}
+.runstrip b{color:var(--ink);font-weight:500}
+
+/* ---------------- right ---------------- */
+.dro{margin-bottom:16px}
+.dro .h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px}
+.dro .h .en{font-family:var(--mono);font-size:9px;color:var(--ink-3);letter-spacing:var(--track);text-transform:uppercase}
+.dro .h .sw{font-size:10.5px;color:var(--ink-3);cursor:pointer;border-bottom:1px solid transparent}
+.dro .h .sw:hover{color:var(--ink);border-bottom-color:var(--rule-2)}
+.ax{
+  display:flex;align-items:center;gap:10px;height:52px;border-bottom:1px solid var(--rule);
+}
+.ax:last-child{border-bottom:0}
+.ax .let{
+  font-family:var(--mono);font-size:11px;font-weight:600;color:var(--seal);
+  width:14px;letter-spacing:.04em;
+}
+.ax .num{
+  flex:1;text-align:right;font-family:var(--mono);font-size:22px;font-weight:400;
+  letter-spacing:-.045em;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1;
+}
+.ax .num .dec{color:var(--ink-2)}
+.ax .z{
+  width:22px;height:22px;display:grid;place-items:center;border:0;background:none;cursor:pointer;
+  color:var(--ink-3);border-radius:1px;
+}
+.ax .z:hover{color:var(--seal);background:rgba(166,58,42,.06)}
+.ax .z svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.5}
+.ovr{
+  display:flex;align-items:center;gap:16px;margin:10px 0 18px;
+  font-size:10.5px;color:var(--ink-3);
+}
+.ovr b{font-family:var(--mono);font-size:11px;color:var(--ink-2);font-weight:500;margin-left:3px}
+.ovr .r{margin-left:auto;color:var(--ink-3);cursor:pointer;font-size:10px;border-bottom:1px solid transparent}
+.ovr .r:hover{color:var(--ink);border-bottom-color:var(--rule-2)}
+
+.jog{margin-bottom:16px}
+.jog .h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.jog .h .en{font-family:var(--mono);font-size:9px;color:var(--ink-3);letter-spacing:var(--track);text-transform:uppercase}
+.steps{display:flex;gap:10px}
+.steps button{
+  border:0;background:none;padding:0 0 2px;cursor:pointer;
+  font-family:var(--mono);font-size:10.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;
+  border-bottom:1px solid transparent;letter-spacing:.02em;
+}
+.steps button:hover{color:var(--ink)}
+.steps button.on{color:var(--seal);border-bottom-color:var(--seal);font-weight:600}
+
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.jk{
+  height:48px;background:var(--paper);border:0;display:grid;place-items:center;cursor:pointer;
+  color:var(--ink-2);border-radius:0;
+}
+.jk:hover{background:var(--ink);color:var(--paper)}
+.jk:hover svg{stroke:var(--paper)}
+.jk:active{background:var(--seal);color:#fff}
+.jk svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.jk.blank{background:var(--paper);cursor:default}
+.jk.blank:hover{background:var(--paper)}
+.jk.mid{background:var(--paper-2);cursor:default;flex-direction:column;gap:1px}
+.jk.mid:hover{background:var(--paper-2);color:var(--ink-3)}
+.jk.mid span{font-family:var(--mono);font-size:8px;letter-spacing:.12em;color:var(--ink-3)}
+.jk.mid i{width:5px;height:1px;background:var(--ink-3);display:block}
+
+.zrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule);border-top:0}
+.zrow button{
+  height:28px;background:var(--paper);border:0;cursor:pointer;
+  font-family:var(--mono);font-size:10px;color:var(--ink-2);letter-spacing:.06em;
+  display:flex;align-items:center;justify-content:center;gap:5px;
+}
+.zrow button:hover{background:var(--ink);color:var(--paper)}
+.zrow button:hover svg{stroke:var(--paper)}
+.zrow svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+
+.acts{margin-top:auto;padding-bottom:16px}
+.acts .tri{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}
+.acts .tri button{
+  height:32px;border:1px solid var(--rule-2);background:transparent;border-radius:1px;cursor:pointer;
+  font-size:11px;color:var(--ink-2);display:flex;align-items:center;justify-content:center;gap:5px;
+}
+.acts .tri button:hover{border-color:var(--ink);color:var(--ink)}
+.acts .tri svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.estop{
+  width:100%;height:32px;margin-top:8px;border:1px solid var(--seal);background:transparent;border-radius:1px;
+  color:var(--seal);font-size:11px;letter-spacing:.14em;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.estop:hover{background:var(--seal);color:#fff}
+.estop:hover svg{stroke:#fff}
+.estop svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+/* status bar */
+.sbar{
+  height:26px;flex:none;display:flex;align-items:center;gap:10px;padding:0 22px;
+  border-top:1px solid var(--rule);background:var(--paper);
+  font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.06em;
+}
+.sbar .dot{width:4px;height:4px;border-radius:50%;background:var(--seal)}
+.sbar b{color:var(--ink-2);font-weight:500}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ header ============ -->
+  <header class="hdr">
+    <div class="logo">
+      <svg viewBox="0 0 24 24"><path d="M17.6 3.6 20.4 6.4 8.2 18.6 3.6 20.4 5.4 15.8z"/><path d="M15.2 6 18 8.8"/></svg>
+      <div class="wordmark">InkPen<small>writing machine console</small></div>
+    </div>
+    <div class="hsep"></div>
+    <div class="state"><i></i><b>待机</b><em>IDLE</em></div>
+    <div class="grow"></div>
+    <div class="meta">
+      <span><svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8"/><path d="M6 2v2M10 2v2M6 12v2M10 12v2M2 6h2M2 10h2M12 6h2M12 10h2"/></svg>GRBL 1.3a · ESP32</span>
+      <span style="color:var(--rule-2)">|</span>
+      <span>COM3 · 115200</span>
+      <button class="tbtn">断开</button>
+    </div>
+  </header>
+
+  <div class="body">
+
+    <!-- ============ left ============ -->
+    <aside class="col-l">
+      <div class="sec"><span class="n">01</span><h2>文稿</h2><span class="en">manuscript</span><span class="grow2"></span><span class="cnt">5 行 · 84 字</span></div>
+      <div class="manu">
+        <textarea spellcheck="false">写字机工作台
+基于开源 GRBL·Plotter 二次开发
+免驱动 免安装 离线可用
+中文手写体一键生成 GCode
+Hello 123，谢谢你</textarea>
+      </div>
+      <div class="manu-tools">
+        <button class="link">打开 txt</button>
+        <button class="link">粘贴</button>
+        <button class="link">清空</button>
+      </div>
+
+      <div class="sec"><span class="n">02</span><h2>版式</h2><span class="en">layout</span></div>
+      <div class="rows">
+        <div class="prow"><span class="k">稿纸模板</span><span class="dot"></span><span class="v">横线信纸</span></div>
+        <div class="prow"><span class="k">文字方向</span><span class="dot"></span><span class="v">横排</span></div>
+        <div class="prow"><span class="k">字号</span><span class="dot"></span><span class="v num">10.0<span class="u">mm</span></span></div>
+        <div class="prow"><span class="k">字距</span><span class="dot"></span><span class="v num">1.0<span class="u">mm</span></span></div>
+        <div class="prow"><span class="k">行距</span><span class="dot"></span><span class="v num">6.0<span class="u">mm</span></span></div>
+        <div class="prow"><span class="k">首行缩进</span><span class="dot"></span><span class="v num">0.0<span class="u">mm</span></span></div>
+        <div class="prow"><span class="k">段落对齐</span><span class="dot"></span><span class="v">居中</span></div>
+      </div>
+
+      <button class="inkbtn">
+        <svg viewBox="0 0 16 16"><path d="M8 2v8M4.6 6.2 8 9.6l3.4-3.4"/><path d="M2.6 13.2h10.8"/></svg>
+        生成 GCODE
+      </button>
+      <div class="pair">
+        <button class="ghostbtn"><svg viewBox="0 0 16 16"><path d="M8 2.4v7.2M5.2 6.8 8 9.6l2.8-2.8"/><path d="M3.2 12.4h9.6"/></svg>导出 .nc</button>
+        <button class="ghostbtn"><svg viewBox="0 0 16 16"><path d="M3 3h7.4L13 5.6V13H3z"/><path d="M5.6 3v3.2h4.6V3M5.6 13V9.4h4.8V13"/></svg>另存为</button>
+      </div>
+
+      <div class="foot-note">
+        130 STROKES · 2 902 LINES<br>
+        TEMP COMP 5×4 · ETA 08:40
+      </div>
+    </aside>
+
+    <!-- ============ center ============ -->
+    <main class="col-c">
+      <div class="tbar">
+        <div class="grp">
+          <button class="on">预览</button>
+          <button>格线</button>
+          <button>路径</button>
+        </div>
+        <div class="dv"></div>
+        <button class="ibtn"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/><path d="M5.2 7h3.6"/></svg></button>
+        <span class="zoom">65%</span>
+        <button class="ibtn"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/><path d="M5.2 7h3.6M7 5.2v3.6"/></svg></button>
+        <button class="ibtn"><svg viewBox="0 0 16 16"><path d="M2.9 6.2V2.9h3.3M13.1 6.2V2.9H9.8M2.9 9.8v3.3h3.3M13.1 9.8v3.3H9.8"/></svg></button>
+        <div class="grow"></div>
+        <button class="ibtn"><svg viewBox="0 0 16 16"><path d="M9.9 4.2 6.1 8l3.8 3.8"/></svg></button>
+        <span class="pager">1 / 3</span>
+        <button class="ibtn"><svg viewBox="0 0 16 16"><path d="M6.1 4.2 9.9 8l-3.8 3.8"/></svg></button>
+        <div class="dv"></div>
+        <span class="zoom" style="color:var(--ink-3)">A4 · 210 × 297</span>
+      </div>
+
+      <div class="canvas">
+        <div class="sheet">
+          <div class="hand">
+            <span style="margin-left:2px">写字机工作台</span>
+            <span style="margin-left:10px">基于开源 GRBL·Plotter 二次开发</span>
+            <span style="margin-left:5px">免驱动 免安装 离线可用</span>
+            <span style="margin-left:12px">中文手写体一键生成 GCode</span>
+            <span style="margin-left:6px">Hello 123，谢谢你</span>
+          </div>
+          <div class="penpos"><b>X120.500 Y64.250</b></div>
+          <div class="idx">SHEET 01 / 03</div>
+        </div>
+      </div>
+
+      <div class="runstrip">
+        <span>READY · 上次 08:40 完成</span>
+        <div class="bar"><i style="width:0"></i></div>
+        <span><b>0</b> / 2 902 行</span>
+      </div>
+    </main>
+
+    <!-- ============ right ============ -->
+    <aside class="col-r">
+      <div class="dro">
+        <div class="h"><span class="en">work position</span><span class="sw">机器坐标</span></div>
+        <div class="ax"><span class="let">X</span><span class="num">120.<span class="dec">500</span></span><button class="z"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.4"/><path d="M8 1.4v2M8 12.6v2M1.4 8h2M12.6 8h2"/></svg></button></div>
+        <div class="ax"><span class="let">Y</span><span class="num">64.<span class="dec">250</span></span><button class="z"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.4"/><path d="M8 1.4v2M8 12.6v2M1.4 8h2M12.6 8h2"/></svg></button></div>
+        <div class="ax"><span class="let">Z</span><span class="num">−2.<span class="dec">000</span></span><button class="z"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.4"/><path d="M8 1.4v2M8 12.6v2M1.4 8h2M12.6 8h2"/></svg></button></div>
+      </div>
+      <div class="ovr">
+        <span>进给<b>100%</b></span>
+        <span>主轴<b>100%</b></span>
+        <span class="r">重置</span>
+      </div>
+
+      <div class="jog">
+        <div class="h">
+          <span class="en">jog</span>
+          <div class="steps">
+            <button>0.1</button><button>1</button><button class="on">10</button><button>50</button><button>100</button>
+          </div>
+        </div>
+        <div class="pad">
+          <div class="jk blank"></div>
+          <button class="jk"><svg viewBox="0 0 16 16"><path d="M8 12.6V3.8M4.4 7.4 8 3.8l3.6 3.6"/></svg></button>
+          <div class="jk blank"></div>
+          <button class="jk"><svg viewBox="0 0 16 16"><path d="M12.6 8H3.8M7.4 4.4 3.8 8l3.6 3.6"/></svg></button>
+          <div class="jk mid"><i></i><span>XY</span></div>
+          <button class="jk"><svg viewBox="0 0 16 16"><path d="M3.4 8h8.8M8.6 4.4 12.2 8l-3.6 3.6"/></svg></button>
+          <div class="jk blank"></div>
+          <button class="jk"><svg viewBox="0 0 16 16"><path d="M8 3.4v8.8M4.4 8.6 8 12.2l3.6-3.6"/></svg></button>
+          <div class="jk blank"></div>
+        </div>
+        <div class="zrow">
+          <button><svg viewBox="0 0 16 16"><path d="M8 12.6V3.8M4.4 7.4 8 3.8l3.6 3.6"/></svg>Z+</button>
+          <button><svg viewBox="0 0 16 16"><path d="M8 3.4v8.8M4.4 8.6 8 12.2l3.6-3.6"/></svg>Z−</button>
+          <button><svg viewBox="0 0 16 16"><path d="M2.6 7.6 8 3.2l5.4 4.4"/><path d="M4.2 7.2v6h7.6v-6"/></svg>原点</button>
+        </div>
+      </div>
+
+      <div class="acts">
+        <button class="inkbtn" style="height:44px">
+          <svg viewBox="0 0 16 16"><path d="M5.2 3.4 12.4 8l-7.2 4.6z" fill="currentColor" stroke="none"/></svg>
+          开始书写
+        </button>
+        <div class="tri">
+          <button><svg viewBox="0 0 16 16"><rect x="4.8" y="3.8" width="2.2" height="8.4" fill="currentColor" stroke="none"/><rect x="9" y="3.8" width="2.2" height="8.4" fill="currentColor" stroke="none"/></svg>暂停</button>
+          <button><svg viewBox="0 0 16 16"><path d="M5.4 3.6 12.2 8l-6.8 4.4z" fill="currentColor" stroke="none"/></svg>继续</button>
+          <button><svg viewBox="0 0 16 16"><rect x="4.6" y="4.6" width="6.8" height="6.8" fill="currentColor" stroke="none"/></svg>停止</button>
+        </div>
+        <button class="estop">
+          <svg viewBox="0 0 16 16"><path d="M8 2.4 14.4 13.2H1.6z"/><path d="M8 6v3M8 11.4h.01"/></svg>
+          急停 · 软复位
+        </button>
+      </div>
+    </aside>
+  </div>
+
+  <div class="sbar">
+    <span class="dot"></span>
+    <span><b>静态检查通过</b> · 0 警告</span>
+    <div class="grow"></div>
+    <span>BUF 127/128</span>
+    <span style="color:var(--rule-2)">|</span>
+    <span>X 120.500&nbsp;&nbsp;Y 64.250&nbsp;&nbsp;Z −2.000</span>
+  </div>
+</div>
+
+</body>
+</html>
